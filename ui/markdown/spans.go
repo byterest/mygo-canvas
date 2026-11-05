@@ -208,7 +208,7 @@ func (sb *spanBuilder) addSpan(text string, src, end int, exact bool, s spanStyl
 			sp.Size = s.size * th.CodeSize
 		}
 		sp.Background = th.CodeBackground
-		sp.Radius = max(3, sp.Size/4)
+		sp.Radius = max(th.px(3), sp.Size/4)
 		if !s.inLink {
 			sp.Color = th.Code
 		}

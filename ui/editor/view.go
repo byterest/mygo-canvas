@@ -332,6 +332,12 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 		lineHeight = 1.5
 	}
 	lh := float32(math.Round(float64(f.Size*lineHeight*scale))) / scale
+	if k := f.OpticalScale; k > 0 && k != 1 {
+		// Text scaled from a size (ui.Font.OpticalScale) has the lines of
+		// that size, on whole pixels there, scaled: snapped at the scaled
+		// size, they would be a little taller or shorter at each zoom.
+		lh = float32(math.Round(float64(text.Unscale(f.Size, k)*lineHeight*scale))) / scale * k
+	}
 	tabSize = max(1, min(tabSize, 16))
 	if v.style == style && v.lineHeight == lh && v.tabSize == tabSize && v.scale == scale {
 		return
@@ -1203,7 +1209,7 @@ func mergeRects(rs []ui.Rect) []ui.Rect {
 
 // styleOf returns the text system's style of a font.
 func styleOf(f ui.Font) text.Style {
-	return text.Style{Family: f.Family, Size: f.Size, Weight: f.Weight, Italic: f.Italic, Features: f.Features}
+	return text.Style{Family: f.Family, Size: f.Size, Weight: f.Weight, Italic: f.Italic, Features: f.Features, OpticalScale: f.OpticalScale}
 }
 
 func isWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }

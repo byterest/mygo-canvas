@@ -86,7 +86,7 @@ func (st *viewState) codeBlock(c *ui.Context, i int) ui.Element {
 // with the language and a copy button above the highlighted code.
 func DefaultCodeBlock(c *ui.Context, b *CodeBlockView) ui.Element {
 	th := &b.st.th
-	box := ui.Column(c).Direction(ui.LeftToRight).Background(th.CodeBlockBackground).Border(1, th.CodeBlockBorder).Radius(th.CodeBlockRadius).AlignSelf(ui.Stretch).Clip()
+	box := ui.Column(c).Direction(ui.LeftToRight).Background(th.CodeBlockBackground).Border(th.px(1), th.CodeBlockBorder).Radius(th.px(th.CodeBlockRadius)).AlignSelf(ui.Stretch).Clip()
 	box.Role(ui.RoleGroup).Label(codeLabel(b.Language))
 	return box.Children(func() {
 		head := ui.Row(c).AlignItems(ui.Center).Padding(th.em(0.35), th.em(0.4), 0, th.em(th.CodeBlockPadding))
@@ -119,7 +119,7 @@ func (b *CodeBlockView) CopyButton(c *ui.Context) ui.Element {
 	cs := st.codeState(b.Index)
 	copied := !cs.copiedAt.IsZero() && c.Now().Sub(cs.copiedAt) < 2*time.Second
 	tx := l10n.In(c.Locale())
-	btn := ui.ButtonBase(c).Padding(th.em(0.2), th.em(0.45)).Radius(5).Gap(th.em(0.3)).Label(tx.CopyCode()).Disabled(b.Open)
+	btn := ui.ButtonBase(c).Padding(th.em(0.2), th.em(0.45)).Radius(th.px(5)).Gap(th.em(0.3)).Label(tx.CopyCode()).Disabled(b.Open)
 	if btn.Hovered() && !b.Open {
 		btn.Background(th.Text.Alpha(0.08))
 	}

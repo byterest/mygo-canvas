@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -634,6 +635,9 @@ func (e *pangoEngine) fontOf(font uintptr) *Font {
 		}
 		l.metricsUnref(m)
 	}
+	// The PangoFont is let go of with the Font, not before: text shaped in
+	// it may be drawn after the engine has forgotten it (forgetFonts).
+	runtime.AddCleanup(f, func(font uintptr) { pangoLib.gObjectUnref(font) }, font)
 	e.fonts[font] = f
 	return f
 }
@@ -1317,16 +1321,15 @@ func xmlEscape(s string) string {
 
 func (e *pangoEngine) fontCount() int { return len(e.fonts) }
 
-// forgetFonts lets go of the Pango and cairo fonts of the Fonts made so
-// far.
+// forgetFonts lets go of the cairo fonts of the Fonts made so far, and
+// forgets the Fonts.
 func (e *pangoEngine) forgetFonts() {
 	l := &pangoLib
 	for _, sf := range e.scaled {
 		l.cairoScaledFontDestroy(sf)
 	}
 	clear(e.scaled)
-	for _, f := range e.fonts {
-		l.gObjectUnref(f.native)
-	}
+	// Each Font lets go of its PangoFont once nothing holds it: glyphs and
+	// layouts kept outside the System still name it, and are drawn in it.
 	clear(e.fonts)
 }

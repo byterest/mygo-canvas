@@ -742,6 +742,83 @@ func TestFontsOfManySizes(t *testing.T) {
 	}
 }
 
+// TestFontsOutliveBeingForgotten draws text shaped before the System let go
+// of its fonts: glyphs kept outside it, by an editor or a cache of a caller,
+// still name the fonts they were shaped in, which must still be there.
+func TestFontsOutliveBeingForgotten(t *testing.T) {
+	s := newSystem()
+	f, ok := s.engine().(fontForgetter)
+	if !ok {
+		t.Skip("the engine keeps no fonts")
+	}
+	kept := s.Layout(Params{Text: "Hi", Style: Style{Size: 13}}).Lines[0].Glyphs[0]
+	for i := 0; f.fontCount() <= maxFonts; i++ {
+		s.Layout(Params{Text: "Hi", Style: Style{Size: 14 + float32(i)/10}})
+	}
+	s.EndFrame() // forgets every font
+	if n := f.fontCount(); n > 0 {
+		t.Fatalf("%d fonts after they were let go of", n)
+	}
+	for range 3 {
+		runtime.GC() // a font let go of too soon is freed here, if not before
+	}
+	if img := s.Glyph(kept.Font, kept.ID, 1, 0, 0, false); !img.OK {
+		t.Error("a glyph shaped before its font was forgotten is not drawn")
+	}
+	runtime.KeepAlive(kept)
+}
+
+// TestOpticalScale lays text scaled from a size out as it is at that size:
+// it is as wide in proportion to its size at every scale, where the system
+// font, and the fonts it falls back to for Chinese, whose spacing follows
+// their size, are not without it. Its glyphs are drawn at the size they
+// show at.
+func TestOpticalScale(t *testing.T) {
+	s := newSystem()
+	if _, ok := s.opticalScale(Style{Size: 28, OpticalScale: 2}); !ok {
+		t.Skip("the engine lays text out at its size")
+	}
+	for _, text := range []string{
+		"The cost of a frame follows what a window shows",
+		"画布上的每个块都按缩放后的字号排版",
+		"Mixed 中文 and English，标点也在内。",
+	} {
+		width := func(size, scale float32) float32 {
+			return s.Layout(Params{Text: text, Style: Style{Size: size, OpticalScale: scale}}).Width / size
+		}
+		for _, base := range []float32{14, 24} {
+			want := width(base, 0)
+			for _, scale := range []float32{0.5, 0.75, 1.5, 2, 4} {
+				if got := width(base*scale, scale); math.Abs(float64(got-want)) > 1e-4 {
+					t.Errorf("%q at %v scaled by %v is %v of its size wide, want %v", text, base, scale, got, want)
+				}
+			}
+		}
+	}
+	l := s.Layout(Params{Text: "Hi 中", Style: Style{Size: 28, OpticalScale: 2}})
+	for _, g := range l.Lines[0].Glyphs {
+		if g.Font.Size != 28 {
+			t.Errorf("glyph %d is drawn at %v, want 28", g.ID, g.Font.Size)
+		}
+	}
+	// Text wrapped at a width breaks its lines where it does unscaled.
+	const prose = "The cost of a frame follows what a window shows, so the interesting number is the blocks a viewport holds. 画布上的每个块都按缩放后的字号排版，所以缩放时换行应当保持不变。"
+	lines := func(scale float32) []int {
+		l := s.Layout(Params{Text: prose, Width: 200 * scale, Style: Style{Size: 14 * scale, OpticalScale: scale}})
+		var ends []int
+		for _, line := range l.Lines {
+			ends = append(ends, line.End)
+		}
+		return ends
+	}
+	want := lines(1)
+	for _, scale := range []float32{0.5, 0.75, 1.5, 2, 4} {
+		if got := lines(scale); !slices.Equal(got, want) {
+			t.Errorf("scaled by %v the lines end at %v, want %v", scale, got, want)
+		}
+	}
+}
+
 // TestPlacement checks that glyphs go to the positions within a pixel the
 // system's text stack draws them at, and baselines to its whole pixels:
 // Core Graphics' two positions a pixel at 26 pixels an em, left of the pen,

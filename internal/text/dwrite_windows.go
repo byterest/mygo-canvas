@@ -655,6 +655,9 @@ func (e *dwrite) fontOf(face uintptr, size float32) *Font {
 	f := &Font{Size: size, Ascent: float32(m.ascent) * em, Descent: float32(m.descent) * em, LineGap: float32(m.lineGap) * em, native: face, thin: e.isThin(face),
 		underlineTop: float32(m.underlinePosition) * em, underlineThick: float32(m.underlineThickness) * em,
 		strikeTop: float32(m.strikethroughPosition) * em, strikeThick: float32(m.strikethroughThickness) * em}
+	// The face is let go of with the Font, not before: text shaped in it
+	// may be drawn after the engine has forgotten it (forgetFonts).
+	runtime.AddCleanup(f, func(face uintptr) { release(face) }, face)
 	e.fonts[key] = f
 	return f
 }
@@ -1551,11 +1554,9 @@ func englishName(strs uintptr) string {
 
 func (e *dwrite) fontCount() int { return len(e.fonts) }
 
-// forgetFonts lets go of the faces of the Fonts made so far; the faces of
-// the families stay.
+// forgetFonts forgets the Fonts made so far; the faces of the families
+// stay. Each Font lets go of its face once nothing holds it: glyphs and
+// layouts kept outside the System still name it, and are drawn in it.
 func (e *dwrite) forgetFonts() {
-	for _, f := range e.fonts {
-		release(f.native)
-	}
 	clear(e.fonts)
 }

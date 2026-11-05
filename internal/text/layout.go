@@ -38,6 +38,16 @@ type Style struct {
 	// and falls back to fonts for it. "" is the language of the System
 	// (SetLanguage).
 	Lang string
+	// OpticalScale, above 0, is how far the text is scaled from the size
+	// it is read at, as by the zoom of a canvas: the text is laid out as
+	// it is at Size/OpticalScale, in the fonts, fallbacks, spacing and
+	// line breaks of that size, and drawn scaled, its glyphs sharp at
+	// Size. Without it, the system's fonts on macOS, the system font and
+	// those it falls back to for Chinese and Japanese among them, space
+	// their letters by their size, and text zoomed out wraps sooner. 0 and
+	// 1 lay text out at Size. Engines whose fonts are as wide in
+	// proportion at every size lay it out at Size.
+	OpticalScale float32
 }
 
 func (s Style) weight() int {
@@ -852,8 +862,81 @@ func (s *System) Shape(p Params) *Layout {
 func (s *System) Metrics(style Style) (ascent, descent, lineHeight float32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if k, ok := s.opticalScale(style); ok {
+		style.Size, style.OpticalScale = Unscale(style.FontSize(), k), 0
+		m := metricsOf(s.font(style), style)
+		return m.ascent * k, m.descent * k, m.lineHeight * k
+	}
 	m := metricsOf(s.font(style), style)
 	return m.ascent, m.descent, m.lineHeight
+}
+
+// Unscale returns a length scaled by k as it is unscaled, to a ten-thousandth
+// of a DIP: the size 13 zoomed to 9.1 is 13 again, not 12.999999, so that
+// text and lines laid out unscaled are the same at every zoom.
+func Unscale(v, k float32) float32 {
+	return float32(math.Round(float64(v)/float64(k)*1e4) / 1e4)
+}
+
+// opticalScale returns the scale a style lays its text out at another size
+// by, and whether it does (Style.OpticalScale).
+func (s *System) opticalScale(style Style) (float32, bool) {
+	k := style.OpticalScale
+	if !(k > 0) || k == 1 || math.IsInf(float64(k), 0) {
+		return 1, false
+	}
+	_, ok := s.engine().(fontScaler)
+	return k, ok
+}
+
+// scaledLayout lays text out as it is at its size unscaled, and scales it
+// by k, its glyphs in their fonts scaled (Style.OpticalScale).
+func (s *System) scaledLayout(p Params, k float32) *cached {
+	q := p
+	q.Style.Size, q.Style.OpticalScale = Unscale(p.Style.FontSize(), k), 0
+	q.Style.LetterSpacing = Unscale(q.Style.LetterSpacing, k)
+	q.Width = Unscale(q.Width, k)
+	q.Indent = Unscale(q.Indent, k)
+	if p.Spans != "" {
+		spans := DecodeSpans(p.Spans)
+		for i := range spans {
+			sp := &spans[i]
+			sp.Size = Unscale(sp.Size, k)
+			sp.LetterSpacing = Unscale(sp.LetterSpacing, k)
+			sp.ObjectWidth = Unscale(sp.ObjectWidth, k)
+			sp.ObjectHeight = Unscale(sp.ObjectHeight, k)
+			sp.ObjectDescent = Unscale(sp.ObjectDescent, k)
+			sp.BaselineShift = Unscale(sp.BaselineShift, k)
+		}
+		q.Spans = EncodeSpans(spans)
+	}
+	c := s.layout(q)
+	l := &c.layout
+	l.Params = p
+	l.Width *= k
+	l.Height *= k
+	sc := s.engine().(fontScaler)
+	for i := range l.Lines {
+		line := &l.Lines[i]
+		line.X *= k
+		line.Y *= k
+		line.Width *= k
+		line.Height *= k
+		line.Baseline *= k
+		line.Ascent *= k
+		line.Descent *= k
+		for j := range line.Glyphs {
+			g := &line.Glyphs[j]
+			g.X *= k
+			g.Y *= k
+			g.Advance *= k
+			g.Size *= k
+			if g.Font != nil {
+				g.Font = sc.scaledFont(g.Font, k)
+			}
+		}
+	}
+	return c
 }
 
 // font returns the font of a style.
@@ -890,6 +973,9 @@ func metricsOf(f *Font, style Style) lineMetrics {
 }
 
 func (s *System) layout(p Params) *cached {
+	if k, ok := s.opticalScale(p.Style); ok {
+		return s.scaledLayout(p, k)
+	}
 	s.made++
 	s.engine().resetScratch()
 	m := metricsOf(s.font(p.Style), p.Style)

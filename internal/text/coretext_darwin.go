@@ -148,6 +148,7 @@ var ct struct {
 	trackingName    uintptr
 	kernName        uintptr
 	cascadeList     uintptr
+	opticalSize     uintptr // kCTFontOpticalSizeAttribute, macOS 10.15
 	languageName    uintptr // kCTLanguageAttributeName, macOS 10.8
 	featureSettings uintptr
 	featureTag      uintptr
@@ -285,6 +286,7 @@ func loadCoreText() error {
 	ct.trackingName = optional(text, "kCTTrackingAttributeName")
 	ct.kernName = optional(text, "kCTKernAttributeName")
 	ct.cascadeList = optional(text, "kCTFontCascadeListAttribute")
+	ct.opticalSize = optional(text, "kCTFontOpticalSizeAttribute")
 	ct.languageName = optional(text, "kCTLanguageAttributeName")
 	ct.featureSettings = optional(text, "kCTFontFeatureSettingsAttribute")
 	ct.featureTag = optional(text, "kCTFontOpenTypeFeatureTag")
@@ -400,6 +402,8 @@ type coreText struct {
 	fonts   map[uint][]*Font  // by CFHash of their CTFont
 	// native finds Fonts by their CTFont, which they retain.
 	native map[uintptr]*Font
+	// scaled are the Fonts of fonts scaled (scaledFont).
+	scaled map[scaleKey]*Font
 	// oblique maps an upright Font to its synthetic italic variant. Both
 	// are retained by fonts, and have distinct glyph/outline cache keys.
 	oblique map[*Font]*Font
@@ -455,6 +459,7 @@ func newCoreText() (*coreText, error) {
 		primary:    map[Style]uintptr{},
 		fonts:      map[uint][]*Font{},
 		native:     map[uintptr]*Font{},
+		scaled:     map[scaleKey]*Font{},
 		oblique:    map[*Font]*Font{},
 		attrs:      map[attrsKey]uintptr{},
 		color:      map[uintptr]bool{},
@@ -700,6 +705,35 @@ func (e *coreText) ctFont(style Style) uintptr {
 	return font
 }
 
+// scaledFont returns the font f scaled by k: the same face, k times the
+// size, in the shapes of f's own size, so that its glyphs are f's, drawn
+// larger or smaller (System.layout, Style.OpticalScale).
+func (e *coreText) scaledFont(f *Font, k float32) *Font {
+	key := scaleKey{f, k}
+	if s, ok := e.scaled[key]; ok {
+		return s
+	}
+	var desc uintptr
+	if ct.opticalSize != 0 {
+		v := cfFloat(float64(f.Size))
+		attrs := cfDictionary([]uintptr{ct.opticalSize}, []uintptr{v})
+		desc = ct.descriptorWithAttrs(attrs)
+		ct.release(attrs)
+		ct.release(v)
+	}
+	native := ct.fontWithAttrs(f.native, float64(f.Size*k), 0, desc)
+	if desc != 0 {
+		ct.release(desc)
+	}
+	if native == 0 {
+		return f
+	}
+	s := e.fontOf(native)
+	ct.release(native) // fontOf retains what it keeps
+	e.scaled[key] = s
+	return s
+}
+
 // obliqueSkew slants synthetic italics by 14°, as WebKit does.
 var obliqueSkew = math.Tan(14 * math.Pi / 180)
 
@@ -907,6 +941,9 @@ func (e *coreText) fontOf(font uintptr) *Font {
 		// Smoothing thickens glyphs, whatever the user's setting.
 		thickens: !e.isColor(font),
 	}
+	// The CTFont is let go of with the Font, not before: text shaped in it
+	// may be drawn after the engine has forgotten it (forgetFonts).
+	runtime.AddCleanup(f, func(font uintptr) { ct.release(font) }, font)
 	e.fonts[h] = append(e.fonts[h], f)
 	e.native[font] = f
 	return f
@@ -1545,16 +1582,14 @@ func (e *coreText) fontCount() int {
 	return n
 }
 
-// forgetFonts lets go of the CTFonts of the Fonts made so far, and of
-// what is known of them; the fonts of styles stay.
+// forgetFonts forgets the Fonts made so far, and what is known of them;
+// the fonts of styles stay. Each Font lets go of its CTFont once nothing
+// holds it: glyphs and layouts kept outside the System, by an editor or a
+// cache of a caller, still name it, and are drawn in it.
 func (e *coreText) forgetFonts() {
-	for _, fs := range e.fonts {
-		for _, f := range fs {
-			ct.release(f.native)
-		}
-	}
 	clear(e.fonts)
 	clear(e.native)
+	clear(e.scaled)
 	clear(e.oblique)
 	clear(e.color)
 }

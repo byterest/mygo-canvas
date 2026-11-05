@@ -170,6 +170,9 @@ type textStyle struct {
 	features   string
 	// lang is the language of the text, a BCP 47 tag (Lang).
 	lang string
+	// opticalScale is how far the text is scaled from the size it is read
+	// at (OpticalScale).
+	opticalScale float32
 	// decoColor and decoThick are those of underlines and strikethroughs;
 	// background is behind the text.
 	decoColor  Color
@@ -196,9 +199,10 @@ const (
 	setBackground
 	setSelection
 	setLang
+	setOpticalScale
 
 	// setAll has every bit of textStyle.set.
-	setAll = setLang<<1 - 1
+	setAll = setOpticalScale<<1 - 1
 )
 
 // layoutStyle is what lays an element out, of what the view sets on it:
@@ -1415,6 +1419,27 @@ func (e *node) Lang(tag string) *node {
 	e.ts.set |= setLang
 	if tag == "" {
 		e.ts.set &^= setLang
+	}
+	return e
+}
+
+// OpticalScale says the element's text, and the text of the elements inside
+// it, is scaled by s from the size it is read at, as by the zoom of a
+// canvas: it is laid out as it is unscaled, in the fonts, spacing and line
+// breaks of that size, and drawn scaled, sharp at the size it shows at.
+// Without it, the system's fonts on macOS, the system font and those it
+// falls back to for Chinese and Japanese among them, space their letters
+// by their size, and text zoomed out wraps sooner.
+//
+//	ui.Box(c).FontSize(14 * zoom).OpticalScale(zoom)
+//
+// 0 and 1 lay text out at its size. Only macOS has fonts whose spacing
+// follows their size; elsewhere it changes nothing.
+func (e *node) OpticalScale(s float32) *node {
+	e.ts.opticalScale = s
+	e.ts.set |= setOpticalScale
+	if !(s > 0) || s == 1 {
+		e.ts.opticalScale = 0
 	}
 	return e
 }

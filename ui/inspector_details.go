@@ -364,6 +364,9 @@ func textStyles(ts *textStyle, set uint32) []inspDecl {
 	if set&setLang != 0 {
 		add("lang", ts.lang)
 	}
+	if set&setOpticalScale != 0 && ts.opticalScale > 0 {
+		add("optical-scale", strconv.FormatFloat(float64(ts.opticalScale), 'g', -1, 32))
+	}
 	var deco []string
 	if set&setUnderline != 0 && ts.underline {
 		switch {

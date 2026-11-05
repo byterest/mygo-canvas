@@ -52,18 +52,17 @@ func (st *viewState) table(c *ui.Context, i int, base spanStyle) ui.Element {
 			if !p.measured {
 				p.width, p.measured = 0, true
 				for _, pc := range p.pieces {
-					pw, _ := c.MeasureText(0, pc.spans...)
-					p.width += pw
+					p.width += th.measure(c, pc.spans...)
 				}
 			}
-			widths[k] = max(widths[k], min(p.width, maxW)+2*padX+1)
+			widths[k] = max(widths[k], min(p.width, maxW)+2*padX+th.px(1))
 			k++
 		}
 	}
 	ts.widths = append(ts.widths[:0], widths...)
 	scroll := ui.ScrollHorizontal(c).AlignSelf(ui.Stretch)
 	return scroll.Children(func() {
-		grid := ui.Column(c).Border(1, th.TableBorder).Radius(th.em(0.3)).Clip().Shrink(0).Role(ui.RoleTable)
+		grid := ui.Column(c).Border(th.px(1), th.TableBorder).Radius(th.em(0.3)).Clip().Shrink(0).Role(ui.RoleTable)
 		grid.Children(func() {
 			n := 0
 			for r := i + 1; r < d.Block(i).Next; r = d.Block(r).Next {
@@ -75,7 +74,7 @@ func (st *viewState) table(c *ui.Context, i int, base spanStyle) ui.Element {
 					rowEl.Background(th.TableStripe)
 				}
 				if n > 0 {
-					rowEl.BorderWidth(1, 0, 0, 0).BorderColor(th.TableBorder)
+					rowEl.BorderWidth(th.px(1), 0, 0, 0).BorderColor(th.TableBorder)
 				}
 				if st.fade != nil && b.Open {
 					if a := st.fade(row.Start); a < 1 {
@@ -97,7 +96,7 @@ func (st *viewState) table(c *ui.Context, i int, base spanStyle) ui.Element {
 						}
 						box := ui.Column(c).Width(widths[k]).Padding(padY, padX).Role(role)
 						if k > 0 {
-							box.BorderWidth(0, 0, 0, 1).BorderColor(th.TableBorder)
+							box.BorderWidth(0, 0, 0, th.px(1)).BorderColor(th.TableBorder)
 						}
 						align := ui.Start
 						switch b.Align[k] {

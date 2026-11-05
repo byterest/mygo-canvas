@@ -22,6 +22,20 @@ OpenType features of the font by tag, or sets them with `tag=value`:
 `FontFeatures("tnum")` gives digits of one width for numbers that change,
 `FontFeatures("liga=0")` turns ligatures off.
 
+Text drawn at a zoom, as on a canvas, is laid out at the zoomed size to be
+sharp, but the system's fonts on macOS, the system font and those it falls
+back to for Chinese and Japanese among them, space their letters by their
+size, wider small and tighter large: zoomed out, a paragraph wraps sooner.
+`OpticalScale(zoom)`, inherited too, lays the text out as it is unzoomed
+and draws it scaled, sharp, so it keeps its lines at every zoom:
+
+```go
+ui.Box(c).Width(300 * zoom).FontSize(14 * zoom).OpticalScale(zoom)
+```
+
+`ui.Font.OpticalScale` does the same for `ShapeText`, the rich text editor
+and the code editor.
+
 Text in Arabic, Hebrew and the other scripts written so reads right to
 left, mixed with text reading left to right as Unicode's bidirectional
 algorithm says: a paragraph reads in the direction of its first strongly

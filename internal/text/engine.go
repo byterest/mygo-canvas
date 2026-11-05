@@ -21,6 +21,20 @@ import (
 // system's choices for what a font lacks, shapes and breaks paragraphs
 // into lines, and rasterizes glyphs. The System calls it with its lock
 // held, so engines need no locking of their own.
+// fontScaler is an engine that draws text laid out at one size at another
+// (Style.OpticalScale), which needs fonts scaled.
+type fontScaler interface {
+	// scaledFont returns the same face as f at k times its size, in the
+	// shapes of f's size.
+	scaledFont(f *Font, k float32) *Font
+}
+
+// scaleKey is a font and how far it is scaled.
+type scaleKey struct {
+	f *Font
+	k float32
+}
+
 type engine interface {
 	// font returns the font a style asks for, at its size, which sets the
 	// default line height: the first family of the style the system has,

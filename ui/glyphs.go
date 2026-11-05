@@ -25,6 +25,10 @@ type Font struct {
 	// takes it: 1.8 gives CJK prose its usual leading. 0 takes the font's
 	// own. Metrics and Shape ignore it.
 	LineHeight float32
+	// OpticalScale is how far the text is scaled from the size it is read
+	// at, as for Element.OpticalScale: the text is laid out as it is at
+	// Size/OpticalScale and drawn scaled. 0 lays it out at Size.
+	OpticalScale float32
 	// Thicken draws the glyphs with a thicker stroke, as Ghostty's
 	// font-thicken: on macOS, with Core Text's font smoothing at its
 	// strongest, whatever the color and the user's setting. It changes
@@ -38,7 +42,7 @@ type Font struct {
 }
 
 func (f Font) style() text.Style {
-	return text.Style{Family: f.Family, Size: f.Size, Weight: f.Weight, Italic: f.Italic, Features: f.Features, Lang: f.Lang, LineHeight: f.LineHeight}
+	return text.Style{Family: f.Family, Size: f.Size, Weight: f.Weight, Italic: f.Italic, Features: f.Features, Lang: f.Lang, LineHeight: f.LineHeight, OpticalScale: f.OpticalScale}
 }
 
 // FontMetrics are the vertical metrics of a font, in DIPs: how far its

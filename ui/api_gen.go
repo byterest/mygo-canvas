@@ -5024,6 +5024,28 @@ func (_handle Element) Opacity(o float32) Element {
 	return wrapElement(_node.Opacity(o))
 }
 
+// OpticalScale says the element's text, and the text of the elements inside
+// it, is scaled by s from the size it is read at, as by the zoom of a
+// canvas: it is laid out as it is unscaled, in the fonts, spacing and line
+// breaks of that size, and drawn scaled, sharp at the size it shows at.
+// Without it, the system's fonts on macOS, the system font and those it
+// falls back to for Chinese and Japanese among them, space their letters
+// by their size, and text zoomed out wraps sooner.
+//
+//	ui.Box(c).FontSize(14 * zoom).OpticalScale(zoom)
+//
+// 0 and 1 lay text out at its size. Only macOS has fonts whose spacing
+// follows their size; elsewhere it changes nothing.
+func (_handle Element) OpticalScale(s float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.OpticalScale(s))
+}
+
 // OverlayShortcut reports whether the key with exactly the modifiers mods
 // was pressed for the element, an overlay, which gets the keys the focused
 // element and those around it leave, wherever the focus is: the overlay

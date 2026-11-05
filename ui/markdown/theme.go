@@ -77,6 +77,13 @@ type Theme struct {
 	Mark Color
 	// Checkbox colors the check boxes of task lists that are checked.
 	Checkbox Color
+	// Zoom, above 0, is how far the view is scaled from the size it is
+	// read at, as a note on a zoomed canvas: FontSize, and the theme's
+	// other lengths in DIPs, are the zoomed ones, and the view lays its
+	// text out as it is unzoomed (Element.OpticalScale), and scales its
+	// borders, rules and corners, so that it is the unzoomed view, scaled,
+	// at every zoom. 0 is 1.
+	Zoom float32
 }
 
 // Color is a color of ui.
@@ -222,3 +229,22 @@ func resolve(th *Theme, def *Theme) Theme {
 
 // em returns v ems in DIPs.
 func (th *Theme) em(v float32) float32 { return v * th.FontSize }
+
+// px scales a length in DIPs at 1:1, as a border's, by the zoom.
+func (th *Theme) px(v float32) float32 {
+	if th.Zoom > 0 {
+		return v * th.Zoom
+	}
+	return v
+}
+
+// measure returns the width of spans of text on one line, laid out as the
+// view lays them out.
+func (th *Theme) measure(c *ui.Context, spans ...ui.Span) float32 {
+	if th.Zoom > 0 && th.Zoom != 1 {
+		w, _ := ui.ShapeRichText(spans, ui.Font{Family: th.Font, Size: th.FontSize, OpticalScale: th.Zoom}, 0).Size()
+		return w
+	}
+	w, _ := c.MeasureText(0, spans...)
+	return w
+}

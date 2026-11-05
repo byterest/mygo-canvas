@@ -195,6 +195,9 @@ func build(c *ui.Context, src string, o *Options, streaming bool) ui.Element {
 	st.fade = st.reveal.fader(c, o.Reveal)
 
 	root.FontSize(th.FontSize).LineHeight(th.LineHeight).TextColor(th.Text)
+	if th.Zoom > 0 {
+		root.OpticalScale(th.Zoom)
+	}
 	if th.Font != "" {
 		root.Font(th.Font)
 	}
@@ -332,11 +335,11 @@ func (st *viewState) defaultBlock(c *ui.Context, i int, tight bool, base spanSty
 		s.weight, s.size, s.color = h.Weight, th.em(h.Size), h.Color
 		el := st.paragraph(c, i, s).Role(ui.RoleHeading).Level(b.Level)
 		if h.Rule {
-			el.BorderWidth(0, 0, 1, 0).BorderColor(th.Rule).Padding(0, 0, th.em(0.3), 0)
+			el.BorderWidth(0, 0, th.px(1), 0).BorderColor(th.Rule).Padding(0, 0, th.em(0.3), 0)
 		}
 		return el
 	case parser.ThematicBreak:
-		return ui.Box(c).Height(1).Background(th.Rule).AlignSelf(ui.Stretch).Margin(th.em(0.25), 0)
+		return ui.Box(c).Height(th.px(1)).Background(th.Rule).AlignSelf(ui.Stretch).Margin(th.em(0.25), 0)
 	case parser.CodeBlock:
 		return st.codeBlock(c, i)
 	case parser.HTMLBlock:
@@ -363,7 +366,7 @@ func (st *viewState) defaultBlock(c *ui.Context, i int, tight bool, base spanSty
 		s := base
 		s.color = th.QuoteText
 		// The bar on the side lines start: the right right to left.
-		q := ui.Column(c).BorderStartWidth(th.QuoteBarWidth).BorderColor(th.QuoteBar).PaddingStart(th.em(0.85)).TextColor(th.QuoteText)
+		q := ui.Column(c).BorderStartWidth(th.px(th.QuoteBarWidth)).BorderColor(th.QuoteBar).PaddingStart(th.em(0.85)).TextColor(th.QuoteText)
 		return q.Children(func() { st.blocks(c, i, false, s) })
 	case parser.List:
 		return st.list(c, i, base)
@@ -552,7 +555,7 @@ func (st *viewState) list(c *ui.Context, i int, base spanStyle) ui.Element {
 	width := th.em(th.ListIndent)
 	if b.Ordered {
 		last := b.Number + max(0, st.countChildren(i)-1)
-		w, _ := c.MeasureText(0, ui.Span{Text: itoa(last) + string(b.Marker), Font: th.Font, Size: th.FontSize})
+		w := th.measure(c, ui.Span{Text: itoa(last) + string(b.Marker), Font: th.Font, Size: th.FontSize})
 		width = max(width, w+th.em(0.5))
 	}
 	col := ui.Column(c).Role(ui.RoleList)
@@ -603,7 +606,7 @@ func (st *viewState) marker(c *ui.Context, list, item *parser.Block, n, depth in
 			size := th.em(0.95)
 			lineH := th.FontSize * th.LineHeight * 1.2
 			checked := item.Task == parser.Checked
-			cb := ui.Box(c).Size(size, size).Radius(max(3, size/5)).Margin(max(0, (lineH-size)/2-1), 0, 0, 0).Role(ui.RoleCheckBox).Checked(checked)
+			cb := ui.Box(c).Size(size, size).Radius(max(th.px(3), size/5)).Margin(max(0, (lineH-size)/2-th.px(1)), 0, 0, 0).Role(ui.RoleCheckBox).Checked(checked)
 			if checked {
 				cb.Background(th.Checkbox).Draw(func(p *ui.Painter, r ui.Rect) {
 					path := &ui.Path{}
@@ -613,7 +616,7 @@ func (st *viewState) marker(c *ui.Context, list, item *parser.Block, n, depth in
 					p.StrokePath(path, max(1.5, r.W/9), ui.RGB(255, 255, 255))
 				})
 			} else {
-				cb.Border(1.5, th.Muted)
+				cb.Border(th.px(1.5), th.Muted)
 			}
 		case list.Ordered:
 			ui.Text(c, itoa(n)+string(list.Marker)).TextColor(th.Muted).Width(width - th.em(0.4)).TextAlign(ui.End).FontFeatures("tnum")
@@ -651,7 +654,7 @@ func (st *viewState) footnotes(c *ui.Context) {
 	}
 	d := st.doc
 	th := &st.th
-	ui.Box(c).Height(1).Background(th.Rule).AlignSelf(ui.Stretch).Margin(th.em(1.2), 0, th.em(0.6), 0)
+	ui.Box(c).Height(th.px(1)).Background(th.Rule).AlignSelf(ui.Stretch).Margin(th.em(1.2), 0, th.em(0.6), 0)
 	base := spanStyle{color: th.Muted, size: th.em(0.875)}
 	for i := 1; i < d.Len(); i++ {
 		b := d.Block(i)
