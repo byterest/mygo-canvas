@@ -964,3 +964,34 @@ func TestLayoutAtMeasuredWidth(t *testing.T) {
 		}
 	}
 }
+
+// Zooming text laid out at its optical scale shapes it once: every zoom
+// after the first scales the layout of the text at 1:1, and draws its
+// glyphs in sizes a zoom going on shares.
+func TestZoomingDoesNotShapeAgain(t *testing.T) {
+	s := newSystem()
+	if _, ok := s.opticalScale(Style{Size: 28, OpticalScale: 2}); !ok {
+		t.Skip("the engine lays text out at its size")
+	}
+	const prose = "The cost of a frame follows what a window shows. 画布上的每个块都按缩放后的字号排版。"
+	at := func(k float32) *Layout {
+		return s.Layout(Params{Text: prose, Width: 200 * k, Style: Style{Size: 14 * k, OpticalScale: k}})
+	}
+	at(1.5)
+	made := s.LayoutsMade()
+	sizes := map[float32]bool{}
+	for k := float32(0.3); k < 3; k *= 1.01 {
+		l := at(k)
+		if got, want := l.Height, at(1.5).Height/1.5*k; math.Abs(float64(got-want)) > 1e-3*float64(k) {
+			t.Errorf("at %v the text is %v high, want %v", k, got, want)
+		}
+		sizes[l.Lines[0].Glyphs[0].Font.Size] = true
+	}
+	if n := s.LayoutsMade() - made; n != 0 {
+		t.Errorf("zooming shaped the text %d more times, want none", n)
+	}
+	// 230 zooms over three octaves and a bit draw in about 32 sizes each.
+	if n := len(sizes); n > 4*glyphSteps {
+		t.Errorf("zooming drew the glyphs in %d sizes, want at most %d", n, 4*glyphSteps)
+	}
+}

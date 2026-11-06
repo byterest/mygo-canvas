@@ -703,6 +703,11 @@ func (s *System) EndFrame() {
 func (s *System) Layout(p Params) *Layout {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.cachedLayout(p)
+}
+
+// cachedLayout is Layout with s.mu held.
+func (s *System) cachedLayout(p Params) *Layout {
 	if c, ok := s.layouts[p]; ok {
 		s.useLayout(c)
 		return &c.layout
@@ -910,14 +915,31 @@ func (s *System) scaledLayout(p Params, k float32) *cached {
 		}
 		q.Spans = EncodeSpans(spans)
 	}
-	c := s.layout(q)
+	// The text at 1:1 is the same at every zoom: it is shaped once, and
+	// kept, and each zoom only scales a copy of it, so that zooming does
+	// not shape every paragraph again on every frame.
+	base := s.cachedLayout(q)
+	c := &cached{layout: Layout{
+		Params:     p,
+		Runes:      base.Runes,
+		Lines:      make([]Line, len(base.Lines)),
+		Width:      base.Width * k,
+		Height:     base.Height * k,
+		boundaries: base.boundaries,
+		Truncated:  base.Truncated,
+	}}
 	l := &c.layout
-	l.Params = p
-	l.Width *= k
-	l.Height *= k
 	sc := s.engine().(fontScaler)
+	fk := glyphScale(k)
 	for i := range l.Lines {
 		line := &l.Lines[i]
+		b := &base.Lines[i]
+		*line = Line{
+			X: b.X, Y: b.Y, Width: b.Width, Height: b.Height,
+			Baseline: b.Baseline, Ascent: b.Ascent, Descent: b.Descent,
+			Start: b.Start, End: b.End, RTL: b.RTL,
+			Glyphs: slices.Clone(b.Glyphs),
+		}
 		line.X *= k
 		line.Y *= k
 		line.Width *= k
@@ -932,11 +954,23 @@ func (s *System) scaledLayout(p Params, k float32) *cached {
 			g.Advance *= k
 			g.Size *= k
 			if g.Font != nil {
-				g.Font = sc.scaledFont(g.Font, k)
+				g.Font = sc.scaledFont(g.Font, fk)
 			}
 		}
 	}
 	return c
+}
+
+// glyphSteps is how many sizes an octave of zoom draws its glyphs at.
+const glyphSteps = 32
+
+// glyphScale returns the scale a zoomed layout draws its glyphs at: k, to
+// within glyphSteps an octave, so that a zoom going on draws its text in
+// sizes it has drawn already instead of rasterizing every glyph anew for
+// each frame. The glyphs stay where k puts them; their sizes are off by a
+// hundredth at most, which does not show.
+func glyphScale(k float32) float32 {
+	return float32(math.Exp2(math.Round(math.Log2(float64(k))*glyphSteps) / glyphSteps))
 }
 
 // font returns the font of a style.
