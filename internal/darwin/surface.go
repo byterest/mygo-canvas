@@ -162,6 +162,9 @@ type surface struct {
 	cursor    platform.Cursor
 	inside    bool
 	ctrlClick bool // the primary button is down for a Control-click
+	// pen is the state of a tablet's pen (tablet.go): whether it sends
+	// points of its own, whether its tip is down, and its last press.
+	pen pen
 
 	// input is the state of the text input with the keyboard; marked is
 	// the input method's composition and markedSel its selection in it.
@@ -796,6 +799,15 @@ func registerSurfaceClass() {
 			if s == nil {
 				return
 			}
+			if button == 0 && s.penOwns(kind, ev) {
+				// The pen's own points press, move and release it. A drag
+				// region still drags the window by the press AppKit made,
+				// which its drags follow.
+				if kind == platform.PointerDown {
+					s.w.pressedLeft(ev)
+				}
+				return
+			}
 			btn := button
 			switch {
 			case button == 2:
@@ -965,6 +977,16 @@ func registerSurfaceClass() {
 		method("otherMouseUp:", mouse(platform.PointerUp, 2)),
 		method("otherMouseDragged:", mouse(platform.PointerMove, 2)),
 		method("mouseMoved:", mouse(platform.PointerMove, 0)),
+		method("tabletPoint:", func(self id, _ objc.SEL, ev id) {
+			if s := b().surfaceOf(self); s != nil {
+				s.tabletPoint(ev)
+			}
+		}),
+		method("tabletProximity:", func(self id, _ objc.SEL, ev id) {
+			if s := b().surfaceOf(self); s != nil {
+				s.tabletProximity(ev)
+			}
+		}),
 		method("mouseEntered:", func(self id, _ objc.SEL, ev id) {
 			if s := b().surfaceOf(self); s != nil {
 				s.inside = true
