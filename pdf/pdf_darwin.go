@@ -4,6 +4,7 @@ import (
 	"image"
 	"runtime"
 	"sync"
+	"unicode"
 	"unicode/utf16"
 	"unsafe"
 
@@ -16,6 +17,8 @@ import (
 
 type cgPoint struct{ X, Y float64 }
 type cgSize struct{ W, H float64 }
+type nsRange struct{ Location, Length uint }
+
 type cgRect struct {
 	Origin cgPoint
 	Size   cgSize
@@ -41,8 +44,9 @@ var kit struct {
 	pdfDocument, nsData objc.Class
 
 	alloc, initWithData, dataWithBytes, release, pageCount, pageAtIndex, boundsForBox, rotation,
-	drawWithBox, string_, utf8String, length, characterBounds, annotations, count, objectAtIndex,
-	bounds, url, absoluteString, destination, page, indexForPage, action, respondsTo, isLocked sel
+	drawWithBox, string_, utf8String, length, annotations, count, objectAtIndex,
+	bounds, url, absoluteString, destination, page, indexForPage, action, respondsTo, isLocked,
+	selectionForRange, boundsForPage sel
 }
 
 type sel = objc.SEL
@@ -84,11 +88,12 @@ func load() bool {
 			&kit.release: "release", &kit.pageCount: "pageCount", &kit.pageAtIndex: "pageAtIndex:",
 			&kit.boundsForBox: "boundsForBox:", &kit.rotation: "rotation", &kit.drawWithBox: "drawWithBox:toContext:",
 			&kit.string_: "string", &kit.utf8String: "UTF8String", &kit.length: "length",
-			&kit.characterBounds: "characterBoundsAtIndex:", &kit.annotations: "annotations", &kit.count: "count",
+			&kit.annotations: "annotations", &kit.count: "count",
 			&kit.objectAtIndex: "objectAtIndex:", &kit.bounds: "bounds", &kit.url: "URL",
 			&kit.absoluteString: "absoluteString", &kit.destination: "destination", &kit.page: "page",
 			&kit.indexForPage: "indexForPage:", &kit.action: "action", &kit.respondsTo: "respondsToSelector:",
-			&kit.isLocked: "isLocked",
+			&kit.isLocked: "isLocked", &kit.selectionForRange: "selectionForRange:",
+			&kit.boundsForPage: "boundsForPage:",
 		} {
 			*p = objc.RegisterName(name)
 		}
@@ -195,20 +200,35 @@ func (d *kitDoc) text(i int) (Text, error) {
 		}
 		var t Text
 		b := d.boxes[i]
+		// The box of a character is that of a selection of it, which
+		// counts the characters as the page's string does:
+		// characterBoundsAtIndex: counts them otherwise, without the
+		// line breaks and runs of spaces the string has, so that its
+		// boxes drift from their characters line by line.
+		inner := kit.poolPush()
 		for at := 0; at < n; {
 			r, w := rune(units[at]), 1
 			if utf16.IsSurrogate(r) && at+1 < len(units) {
 				r, w = utf16.DecodeRune(r, rune(units[at+1])), 2
 			}
-			c := objc.Send[cgRect](p, kit.characterBounds, at)
 			var box Rect
-			if c.Size.W > 0 || c.Size.H > 0 {
-				box = b.rect(c.Origin.X, c.Origin.Y, c.Origin.X+c.Size.W, c.Origin.Y+c.Size.H)
+			if !unicode.IsSpace(r) {
+				if sel := p.Send(kit.selectionForRange, nsRange{uint(at), uint(w)}); sel != 0 {
+					c := objc.Send[cgRect](sel, kit.boundsForPage, p)
+					if c.Size.W > 0 && c.Size.H > 0 {
+						box = b.rect(c.Origin.X, c.Origin.Y, c.Origin.X+c.Size.W, c.Origin.Y+c.Size.H)
+					}
+				}
 			}
 			t.Runes = append(t.Runes, r)
 			t.Boxes = append(t.Boxes, box)
 			at += w
+			if len(t.Runes)%256 == 0 {
+				kit.poolPop(inner)
+				inner = kit.poolPush()
+			}
 		}
+		kit.poolPop(inner)
 		return t
 	}), nil
 }

@@ -31,7 +31,9 @@ func testPDF() []byte {
 			"/Resources << /Font << /F1 7 0 R >> >> /Annots [8 0 R 9 0 R] >>",
 		4: "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Rotate 90 /Contents 6 0 R " +
 			"/Resources << /Font << /F1 7 0 R >> >> /Annots [10 0 R] >>",
-		5: stream("BT /F1 24 Tf 72 700 Td (Hello PDF) Tj ET\n0 0 0 rg 72 600 100 50 re f\n"),
+		5: stream("BT /F1 24 Tf 72 700 Td (Hello PDF) Tj ET\n0 0 0 rg 72 600 100 50 re f\n" +
+			"BT /F1 12 Tf 72 300 Td (A line of text) Tj ET\nBT /F1 12 Tf 72 280 Td (Then    spaced    out) Tj ET\n" +
+			"BT /F1 12 Tf 72 260 Td (And the last one) Tj ET\n"),
 		6: stream("0 0 0 rg 10 10 50 30 re f\nBT /F1 24 Tf 150 50 Td (T) Tj ET\n"),
 		7: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
 		8: "<< /Type /Annot /Subtype /Link /Rect [72 500 272 530] /Border [0 0 0] " +
@@ -286,6 +288,47 @@ func TestLinksRotated(t *testing.T) {
 	}
 	if r := links[0].Rect; !near(r.X, 100, 1) || !near(r.Y, 20, 1) || !near(r.W, 30, 1) || !near(r.H, 60, 1) {
 		t.Errorf("the link takes %+v, want 100, 20, 30 by 60", r)
+	}
+}
+
+// The boxes of the characters of lines below others, and after runs of
+// spaces, are theirs: each line's first is at its left margin.
+func TestTextBoxesOfLines(t *testing.T) {
+	d := openTest(t)
+	text, err := d.Text(0)
+	if errors.Is(err, ErrNoText) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := text.String()
+	for _, c := range []struct {
+		word string
+		x, y float64 // the left of its first character, the baseline down
+	}{
+		{"A line", 72, 492},
+		{"Then", 72, 512},
+		{"out", -1, 512},
+		{"And the", 72, 532},
+	} {
+		i := strings.Index(s, c.word)
+		if i < 0 {
+			t.Fatalf("the text %q does not say %q", s, c.word)
+		}
+		b := text.Boxes[len([]rune(s[:i]))]
+		if c.x >= 0 && !near(b.X, c.x, 1.5) {
+			t.Errorf("%q starts at %+v, want x %v", c.word, b, c.x)
+		}
+		if b.Y > c.y || b.Y+b.H < c.y-2 {
+			t.Errorf("%q is at %+v, not on the line of baseline %v", c.word, b, c.y)
+		}
+		if c.word == "out" {
+			then := text.Boxes[len([]rune(s[:strings.Index(s, "spaced")]))]
+			if b.X < then.X+40 {
+				t.Errorf("out is at %+v, not after spaced at %+v", b, then)
+			}
+		}
 	}
 }
 
