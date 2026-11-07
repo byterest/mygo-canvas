@@ -35,6 +35,9 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	if rt.insp.pointer(rt, ev, x, y) {
 		return true
 	}
+	if rt.touchEvent(ev, x, y) {
+		return false
+	}
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerDown, platform.PointerUp, platform.PointerScroll, platform.PointerZoom:
 		rt.mods = Modifiers(ev.Mods)

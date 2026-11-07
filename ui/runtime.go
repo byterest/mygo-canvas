@@ -435,6 +435,7 @@ type engine struct {
 	labels     []labelNode
 	tips       tooltips
 	scrollDrag scrollDrag
+	touch      touchPan
 	// wheeling are the elements of the scroll containers that the notches
 	// of a mouse wheel scroll smoothly (glideWheels).
 	wheeling []uint64
@@ -537,6 +538,7 @@ func (rt *engine) runFrame() {
 	if rt.inFrame || rt.closed {
 		return
 	}
+	rt.touchGlide()
 	rt.inFrame = true
 	defer rt.endFrame()
 

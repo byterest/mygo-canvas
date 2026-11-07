@@ -4,6 +4,7 @@ package ios
 
 import (
 	"math"
+	"time"
 
 	"github.com/ebitengine/purego/objc"
 
@@ -32,6 +33,7 @@ type surface struct {
 	touches map[id]*touch
 	primary id   // the touch that is the pointer
 	pressed bool // the pointer is down
+	quick   bool // the finger pressing moved at once: its events are Touch
 	gesture bool // two fingers scroll and zoom
 	cx, cy  float64
 	dist    float64
@@ -44,7 +46,12 @@ type surface struct {
 type touch struct {
 	x0, y0, x, y float64
 	pen          bool
+	at           time.Time // when it went down
 }
+
+// holdToDrag is how long a finger holds still for its moves to drag what
+// it pressed: one moving sooner scrolls what scrolls under it (Touch).
+const holdToDrag = 300 * time.Millisecond
 
 // moveSlop is how far a finger moves, in points, before it presses.
 const moveSlop = 6
@@ -180,13 +187,13 @@ func (s *surface) where(t id) (float64, float64) {
 }
 
 func (s *surface) pointer(kind platform.SurfaceEventKind, x, y float64, clicks int) {
-	s.send(platform.SurfaceEvent{Kind: kind, X: x, Y: y, Clicks: clicks})
+	s.send(platform.SurfaceEvent{Kind: kind, X: x, Y: y, Clicks: clicks, Touch: s.quick})
 }
 
 func (s *surface) touchesBegan(set id) {
 	eachTouch(set, func(t id) {
 		x, y := s.where(t)
-		s.touches[t] = &touch{x0: x, y0: y, x: x, y: y, pen: sendInt(t, "type") == 2}
+		s.touches[t] = &touch{x0: x, y0: y, x: x, y: y, pen: sendInt(t, "type") == 2, at: time.Now()}
 	})
 	if s.gesture {
 		return
@@ -196,6 +203,7 @@ func (s *surface) touchesBegan(set id) {
 		// nothing, or lets go of what it pressed.
 		if p := s.touches[s.primary]; p != nil && s.pressed && !p.pen {
 			s.pointer(platform.PointerUp, p.x, p.y, 0)
+			s.quick = false
 		}
 		if p := s.touches[s.primary]; p != nil && p.pen {
 			return // the pen keeps drawing; a palm or a finger beside it is ignored
@@ -261,7 +269,9 @@ func (s *surface) touchesMoved(set id) {
 		if math.Hypot(tc.x-tc.x0, tc.y-tc.y0) < moveSlop {
 			return
 		}
-		// It moved: it pressed where it went down, and drags from there.
+		// It moved: it pressed where it went down, and drags from there,
+		// or scrolls if it moved at once.
+		s.quick = !tc.pen && time.Since(tc.at) < holdToDrag
 		s.pointer(platform.PointerMove, tc.x0, tc.y0, 0)
 		s.pointer(platform.PointerDown, tc.x0, tc.y0, 1)
 		s.pressed = true
@@ -290,7 +300,7 @@ func (s *surface) touchesEnded(set id, cancelled bool) {
 			s.pointer(platform.PointerDown, tc.x0, tc.y0, clicks)
 			s.pointer(platform.PointerUp, tc.x0, tc.y0, clicks)
 		}
-		s.primary, s.pressed = 0, false
+		s.primary, s.pressed, s.quick = 0, false, false
 	})
 	if s.gesture && len(s.touches) == 0 {
 		s.gesture = false

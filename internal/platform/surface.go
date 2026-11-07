@@ -340,9 +340,14 @@ type SurfaceEvent struct {
 	// not report it. Key and PhysicalKey agree on a US layout.
 	PhysicalKey Key
 	Mods        Modifiers
-	Repeat      bool
-	Text        string
-	Caret       int
+	// Touch marks the pointer's events of a finger on a touch screen that
+	// moved as soon as it pressed: over content that scrolls, it scrolls
+	// it rather than pressing what it is on, as fingers do on phones. A
+	// finger that held still first presses, to drag.
+	Touch  bool
+	Repeat bool
+	Text   string
+	Caret  int
 	// Replace makes TextInput replace, and TextComposition compose over,
 	// the runes From to To of the last TextInputState.Text, instead of the
 	// selection.
