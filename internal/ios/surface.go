@@ -24,10 +24,10 @@ type surface struct {
 	view id
 	link id
 
-	running bool // the display link ticks
-	due     bool // a frame is asked for
-	idle    int  // ticks with no frame asked for
-	w0, h0  float64
+	running    bool // the display link ticks
+	due        bool // a frame is asked for
+	idle       int  // ticks with no frame asked for
+	w0, h0, k0 float64
 
 	touches map[id]*touch
 	primary id   // the touch that is the pointer
@@ -37,6 +37,8 @@ type surface struct {
 	dist    float64
 
 	input platform.TextInputState
+	text  id // takes the on-screen keyboard's text
+	ime   ime
 }
 
 type touch struct {
@@ -47,7 +49,7 @@ type touch struct {
 // moveSlop is how far a finger moves, in points, before it presses.
 const moveSlop = 6
 
-func newSurface(w *window, r cgRect) *surface {
+func newSurface(w *window, r CGRect) *surface {
 	s := &surface{w: w, touches: map[id]*touch{}}
 	s.view = msgInitRect(send(class("MyGoSurfaceView"), "alloc"), sel("initWithFrame:"), r)
 	send(s.view, "setMultipleTouchEnabled:", true)
@@ -57,6 +59,7 @@ func newSurface(w *window, r cgRect) *surface {
 	send(s.link, "setPaused:", true)
 	send(s.link, "addToRunLoop:forMode:", send(class("NSRunLoop"), "mainRunLoop"), kCFRunLoopCommonModes)
 	w.b.bySurface[s.view] = s
+	s.newTextView()
 	return s
 }
 
@@ -67,6 +70,7 @@ func (s *surface) destroy() {
 		s.link = 0
 	}
 	delete(s.w.b.bySurface, s.view)
+	delete(s.w.b.byText, s.text)
 }
 
 func (s *surface) send(ev platform.SurfaceEvent) bool {
@@ -80,9 +84,17 @@ func (s *surface) Native() platform.SurfaceNative {
 	return platform.SurfaceNative{View: uintptr(s.view), Layer: uintptr(send(s.view, "layer"))}
 }
 
+// scale is how many pixels a point is on the screen the view shows on:
+// its traits know it once it is in a window of a scene; a view made before
+// that has 1 for a content scale.
 func (s *surface) scale() float64 {
-	if f := msgFloat(s.view, sel("contentScaleFactor")); f > 0 {
-		return f
+	for _, v := range []id{send(s.view, "window"), s.view} {
+		if v == 0 {
+			continue
+		}
+		if f := msgFloat(send(v, "traitCollection"), sel("displayScale")); f > 0 {
+			return f
+		}
 	}
 	_, scale := mainScreen()
 	return scale
@@ -129,8 +141,6 @@ func (s *surface) PresentPixels(pix []byte, stride, width, height int) {}
 
 func (s *surface) SetCursor(platform.Cursor) {}
 
-func (s *surface) SetTextInput(t platform.TextInputState) { s.input = t }
-
 func (s *surface) UpdateAccessibility(*platform.AccessTree)  {}
 func (s *surface) StartDataDrag(platform.DragRequest)        {}
 func (s *surface) CancelDataDrag()                           {}
@@ -143,11 +153,12 @@ func (s *surface) NewWebView(*platform.WindowOptions, platform.WindowHandler) (p
 // layout tells the content of a new size, and draws it at once, with the
 // change: a rotation shows the frame of the new size.
 func (s *surface) layout() {
-	w, h, _ := s.Size()
-	if w == s.w0 && h == s.h0 {
+	w, h, k := s.Size()
+	if w == s.w0 && h == s.h0 && k == s.k0 {
 		return
 	}
-	s.w0, s.h0 = w, h
+	s.w0, s.h0, s.k0 = w, h, k
+	msgSetFloat(s.view, sel("setContentScaleFactor:"), k)
 	s.send(platform.SurfaceEvent{Kind: platform.SurfaceResize})
 	s.due = false
 	s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
@@ -232,7 +243,7 @@ func (s *surface) touchesMoved(set id) {
 		}
 		cx, cy, dist := s.pair()
 		if dx, dy := cx-s.cx, cy-s.cy; dx != 0 || dy != 0 {
-			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: cx, Y: cy, DX: -dx, DY: -dy, Precise: true})
+			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: cx, Y: cy, DX: dx, DY: dy, Precise: true})
 		}
 		if s.dist > 0 && dist > 0 {
 			if k := dist / s.dist; math.Abs(k-1) > 1e-3 {
@@ -327,14 +338,16 @@ func registerSurfaceClass() {
 			}
 		}},
 		{Cmd: sel("pressesBegan:withEvent:"), Fn: func(self id, _ objc.SEL, set, ev id) {
+			// Presses the text view passed on were its.
 			s := surfaceOf(self)
-			if s == nil || !s.presses(set, true) {
+			if s == nil || s.typing() || !s.presses(set, true) {
 				self.SendSuper(sel("pressesBegan:withEvent:"), set, ev)
 			}
 		}},
 		{Cmd: sel("pressesEnded:withEvent:"), Fn: func(self id, _ objc.SEL, set, ev id) {
+			// Presses the text view passed on were its.
 			s := surfaceOf(self)
-			if s == nil || !s.presses(set, false) {
+			if s == nil || s.typing() || !s.presses(set, false) {
 				self.SendSuper(sel("pressesEnded:withEvent:"), set, ev)
 			}
 		}},

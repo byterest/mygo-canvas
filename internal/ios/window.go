@@ -29,7 +29,11 @@ func (b *Backend) NewWindow(opts *platform.WindowOptions, h platform.WindowHandl
 	}
 	r, _ := mainScreen()
 	w := &window{b: b, h: h, title: opts.Title}
-	w.win = msgInitRect(send(class("UIWindow"), "alloc"), sel("initWithFrame:"), r)
+	if b.scene != 0 {
+		w.win = send(send(class("UIWindow"), "alloc"), "initWithWindowScene:", b.scene)
+	} else {
+		w.win = msgInitRect(send(class("UIWindow"), "alloc"), sel("initWithFrame:"), r)
+	}
 	w.vc = send(send(class("MyGoViewController"), "alloc"), "init")
 	w.surface = newSurface(w, r)
 	send(w.vc, "setView:", w.surface.view)
@@ -81,10 +85,31 @@ func (w *window) Show() {
 	if w.closed {
 		return
 	}
-	send(w.win, "makeKeyAndVisible")
 	w.visible = true
+	if w.b.scene == 0 {
+		return // shown when its scene connects
+	}
+	w.present()
+}
+
+// present makes the window key and visible in its scene.
+func (w *window) present() {
+	send(w.win, "makeKeyAndVisible")
 	send(w.surface.view, "becomeFirstResponder")
 	w.h.Focused()
+}
+
+// attach puts a window made before the scene connected in it, and shows
+// it if it was asked to.
+func (w *window) attach(scene id) {
+	if w.closed {
+		return
+	}
+	send(w.win, "setWindowScene:", scene)
+	msgSetRect(w.win, sel("setFrame:"), msgRect(send(scene, "coordinateSpace"), sel("bounds")))
+	if w.visible {
+		w.present()
+	}
 }
 
 func (w *window) ShowInactive() { w.Show() }

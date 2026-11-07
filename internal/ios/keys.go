@@ -19,20 +19,7 @@ func (s *surface) presses(set id, down bool) bool {
 		}
 		took = true
 		code := sendInt(key, "keyCode")
-		flags := sendInt(key, "modifierFlags")
-		var mods platform.Modifiers
-		if flags&(1<<17) != 0 {
-			mods |= platform.ModShift
-		}
-		if flags&(1<<18) != 0 {
-			mods |= platform.ModCtrl
-		}
-		if flags&(1<<19) != 0 {
-			mods |= platform.ModAlt
-		}
-		if flags&(1<<20) != 0 {
-			mods |= platform.ModSuper
-		}
+		mods := keyMods(sendInt(key, "modifierFlags"))
 		k := hidKey(code)
 		if !down {
 			s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: k, PhysicalKey: k, Mods: mods})
@@ -56,6 +43,24 @@ func (s *surface) presses(set id, down bool) bool {
 		}
 	})
 	return took
+}
+
+// keyMods returns the modifiers of UIKeyModifierFlags.
+func keyMods(flags int) platform.Modifiers {
+	var mods platform.Modifiers
+	if flags&(1<<17) != 0 {
+		mods |= platform.ModShift
+	}
+	if flags&(1<<18) != 0 {
+		mods |= platform.ModCtrl
+	}
+	if flags&(1<<19) != 0 {
+		mods |= platform.ModAlt
+	}
+	if flags&(1<<20) != 0 {
+		mods |= platform.ModSuper
+	}
+	return mods
 }
 
 // hidKey returns the key of a USB HID usage of the keyboard page.

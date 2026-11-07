@@ -13,12 +13,12 @@ import (
 
 type id = objc.ID
 
-// cgPoint, cgSize and cgRect mirror Core Graphics' structs (64-bit).
-type cgPoint struct{ X, Y float64 }
-type cgSize struct{ W, H float64 }
-type cgRect struct {
-	Origin cgPoint
-	Size   cgSize
+// CGPoint, CGSize and CGRect mirror Core Graphics' structs (64-bit).
+type CGPoint struct{ X, Y float64 }
+type CGSize struct{ W, H float64 }
+type CGRect struct {
+	Origin CGPoint
+	Size   CGSize
 }
 
 // uiEdgeInsets mirrors UIEdgeInsets.
@@ -30,12 +30,14 @@ var (
 
 	// Typed variants of objc_msgSend, for structs and floats: Send's
 	// generic form registers a function on every call.
-	msgRect     func(obj id, sel objc.SEL) cgRect
-	msgInitRect func(obj id, sel objc.SEL, r cgRect) id
-	msgPointIn  func(obj id, sel objc.SEL, view id) cgPoint
-	msgFloat    func(obj id, sel objc.SEL) float64
-	msgInsets   func(obj id, sel objc.SEL) uiEdgeInsets
-	msgSetFloat func(obj id, sel objc.SEL, v float64)
+	msgRect        func(obj id, sel objc.SEL) CGRect
+	msgInitRect    func(obj id, sel objc.SEL, r CGRect) id
+	msgPointIn     func(obj id, sel objc.SEL, view id) CGPoint
+	msgFloat       func(obj id, sel objc.SEL) float64
+	msgInsets      func(obj id, sel objc.SEL) uiEdgeInsets
+	msgSetFloat    func(obj id, sel objc.SEL, v float64)
+	msgSetRect     func(obj id, sel objc.SEL, r CGRect)
+	msgConvertRect func(obj id, sel objc.SEL, r CGRect, view id) CGRect
 
 	uiApplicationMain     uintptr
 	pthreadMainNP         uintptr
@@ -48,6 +50,10 @@ var (
 	kCFRunLoopCommonModes uintptr
 	kCFRunLoopDefaultMode uintptr
 	poolPush, poolPop     uintptr
+
+	// UIKit's names of the keyboard's notifications, and of its frame in
+	// them.
+	keyboardWillChangeFrame, keyboardWillHide, keyboardFrameEnd uintptr
 )
 
 func load() error {
@@ -77,7 +83,7 @@ func load() error {
 		}
 		return p
 	}
-	for _, f := range []any{&msgRect, &msgInitRect, &msgPointIn, &msgFloat, &msgInsets, &msgSetFloat} {
+	for _, f := range []any{&msgRect, &msgInitRect, &msgPointIn, &msgFloat, &msgInsets, &msgSetFloat, &msgSetRect, &msgConvertRect} {
 		purego.RegisterLibFunc(f, objcLib, "objc_msgSend")
 	}
 	uiApplicationMain = sym(uikit, "UIApplicationMain")
@@ -92,6 +98,9 @@ func load() error {
 	poolPop = sym(objcLib, "objc_autoreleasePoolPop")
 	kCFRunLoopCommonModes = deref(sym(cf, "kCFRunLoopCommonModes"))
 	kCFRunLoopDefaultMode = deref(sym(cf, "kCFRunLoopDefaultMode"))
+	keyboardWillChangeFrame = deref(sym(uikit, "UIKeyboardWillChangeFrameNotification"))
+	keyboardWillHide = deref(sym(uikit, "UIKeyboardWillHideNotification"))
+	keyboardFrameEnd = deref(sym(uikit, "UIKeyboardFrameEndUserInfoKey"))
 	return errLoad
 }
 

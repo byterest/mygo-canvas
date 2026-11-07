@@ -30,6 +30,15 @@ cat > "$out/Info.plist" <<PLIST
 	<key>LSRequiresIPhoneOS</key><true/>
 	<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
 	<key>UILaunchScreen</key><dict/>
+	<key>UIApplicationSceneManifest</key><dict>
+		<key>UIApplicationSupportsMultipleScenes</key><false/>
+		<key>UISceneConfigurations</key><dict>
+			<key>UIWindowSceneSessionRoleApplication</key><array><dict>
+				<key>UISceneConfigurationName</key><string>Default</string>
+				<key>UISceneDelegateClassName</key><string>MyGoSceneDelegate</string>
+			</dict></array>
+		</dict>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key><array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

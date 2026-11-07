@@ -32,13 +32,15 @@ type Backend struct {
 
 	windows   []*window
 	bySurface map[id]*surface
+	byText    map[id]*surface
+	scene     id // the window scene, once UIKit connects it
 }
 
 // New returns the UIKit backend.
 func New() *Backend {
 	// The core asks which thread it is on before Init.
 	load()
-	return &Backend{Backend: unsupported.New(), bySurface: map[id]*surface{}}
+	return &Backend{Backend: unsupported.New(), bySurface: map[id]*surface{}, byText: map[id]*surface{}}
 }
 
 var theBackend *Backend
@@ -129,7 +131,9 @@ func registerClasses() {
 	classesDone = true
 	purego.RegisterFunc(&runLoopRunInMode, cfRunLoopRunInMode)
 	registerAppDelegate()
+	registerSceneDelegate()
 	registerSurfaceClass()
+	registerTextViewClass()
 }
 
 func registerAppDelegate() {
@@ -142,11 +146,12 @@ func registerAppDelegate() {
 				b.h.Ready()
 				return true
 			}},
-			{Cmd: sel("applicationDidBecomeActive:"), Fn: func(self id, _ objc.SEL, app id) {
-				theBackend.h.DidBecomeActive()
-			}},
-			{Cmd: sel("applicationWillResignActive:"), Fn: func(self id, _ objc.SEL, app id) {
-				theBackend.h.DidResignActive()
+			// Windows live in scenes: from iOS 27 UIKit does not launch an
+			// app without them.
+			{Cmd: sel("application:configurationForConnectingSceneSession:options:"), Fn: func(self id, _ objc.SEL, app, session, opts id) id {
+				c := send(send(class("UISceneConfiguration"), "alloc"), "initWithName:sessionRole:", nsString("Default"), send(session, "role"))
+				send(c, "setDelegateClass:", objc.GetClass("MyGoSceneDelegate"))
+				return send(c, "autorelease")
 			}},
 			{Cmd: sel("applicationWillTerminate:"), Fn: func(self id, _ objc.SEL, app id) {
 				theBackend.h.Terminating()
@@ -157,9 +162,35 @@ func registerAppDelegate() {
 	}
 }
 
+// registerSceneDelegate registers the delegate of the window scene, which
+// takes the windows made before it connected, and tells the app when it
+// becomes active or stops being.
+func registerSceneDelegate() {
+	_, err := objc.RegisterClass("MyGoSceneDelegate", objc.GetClass("UIResponder"),
+		[]*objc.Protocol{objc.GetProtocol("UIWindowSceneDelegate")}, nil,
+		[]objc.MethodDef{
+			{Cmd: sel("scene:willConnectToSession:options:"), Fn: func(self id, _ objc.SEL, scene, session, opts id) {
+				b := theBackend
+				b.scene = scene
+				for _, w := range b.windows {
+					w.attach(scene)
+				}
+			}},
+			{Cmd: sel("sceneDidBecomeActive:"), Fn: func(self id, _ objc.SEL, scene id) {
+				theBackend.h.DidBecomeActive()
+			}},
+			{Cmd: sel("sceneWillResignActive:"), Fn: func(self id, _ objc.SEL, scene id) {
+				theBackend.h.DidResignActive()
+			}},
+		})
+	if err != nil {
+		panic(err)
+	}
+}
+
 // mainScreen returns the bounds of the screen in points and how many
 // pixels a point is.
-func mainScreen() (cgRect, float64) {
+func mainScreen() (CGRect, float64) {
 	s := send(class("UIScreen"), "mainScreen")
 	return msgRect(s, sel("bounds")), msgFloat(s, sel("scale"))
 }
