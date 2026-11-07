@@ -42,7 +42,9 @@ type Rect struct{ X, Y, Width, Height int }
 // TitleBar is the room the window controls take at the top of a window
 // with a hidden title bar, in DIPs: they sit in a band of Height along the
 // top edge, Left wide from the left edge and Right wide from the right.
-type TitleBar struct{ Height, Left, Right int }
+// Top is the room above the band the system keeps across the whole width,
+// as iOS's status bar: the band starts below it.
+type TitleBar struct{ Top, Height, Left, Right int }
 
 // Color is an 8-bit RGBA color.
 type Color struct{ R, G, B, A uint8 }

@@ -211,7 +211,11 @@ func loadCoreText() error {
 	text := lib("/System/Library/Frameworks/CoreText.framework/CoreText")
 	cg := lib("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
 	objcLib := lib("/usr/lib/libobjc.A.dylib")
-	lib("/System/Library/Frameworks/AppKit.framework/AppKit") // NSFont
+	if runtime.GOOS == "ios" {
+		lib("/System/Library/Frameworks/UIKit.framework/UIKit") // UIFont
+	} else {
+		lib("/System/Library/Frameworks/AppKit.framework/AppKit") // NSFont
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("cannot load %s", strings.Join(missing, ", "))
 	}
@@ -487,6 +491,9 @@ func newCoreText() (*coreText, error) {
 // turns it off when AppleFontSmoothing is 0, or not a number, which Core
 // Graphics' bitmap contexts do not heed.
 func fontSmoothing() bool {
+	if runtime.GOOS == "ios" {
+		return false // iOS draws text without smoothing
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pool := ct.poolPush()
@@ -563,7 +570,7 @@ func (e *coreText) systemFont(size float32, weight int, italic, mono bool) uintp
 		sel = "monospacedSystemFontOfSize:weight:"
 	}
 	var font uintptr
-	if cls := objc.ID(objc.GetClass("NSFont")); cls != 0 && objc.Send[bool](cls, objc.RegisterName("respondsToSelector:"), objc.RegisterName(sel)) {
+	if cls := objc.ID(objc.GetClass(systemFontClass())); cls != 0 && objc.Send[bool](cls, objc.RegisterName("respondsToSelector:"), objc.RegisterName(sel)) {
 		if font = uintptr(cls.Send(objc.RegisterName(sel), float64(size), nsWeight(weight))); font != 0 {
 			ct.retain(font)
 		}
@@ -1592,4 +1599,14 @@ func (e *coreText) forgetFonts() {
 	clear(e.scaled)
 	clear(e.oblique)
 	clear(e.color)
+}
+
+// systemFontClass is the class that knows the system font's weights:
+// AppKit's NSFont, or UIKit's UIFont on iOS, whose sizes and weights are
+// the same.
+func systemFontClass() string {
+	if runtime.GOOS == "ios" {
+		return "UIFont"
+	}
+	return "NSFont"
 }

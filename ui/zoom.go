@@ -105,7 +105,7 @@ func (rt *engine) titleBar() TitleBar {
 	b := rt.host.titleBar()
 	if rt.zoomed() {
 		z := rt.contentZoom
-		b = TitleBar{Height: b.Height / z, Left: b.Left / z, Right: b.Right / z}
+		b = TitleBar{Top: b.Top / z, Height: b.Height / z, Left: b.Left / z, Right: b.Right / z}
 	}
 	return b
 }

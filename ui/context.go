@@ -413,7 +413,13 @@ func (c *context) Size() (width, height float32) { return c.w, c.h }
 // TitleBar is the room the window controls take at the top of a window
 // with a hidden title bar, in DIPs: they sit in a band of Height along the
 // top edge, Left wide from the left edge and Right wide from the right.
-type TitleBar struct{ Height, Left, Right float32 }
+type TitleBar struct {
+	Height, Left, Right float32
+	// Top is the room above the bar the system keeps across the whole
+	// width, as iOS's status bar: the bar starts Top down, and nothing of
+	// the content's goes above it but what it paints under the status bar.
+	Top float32
+}
 
 // TitleBar returns the room the window controls take in a window with a
 // hidden title bar (mygo.WindowOptions.TitleBarStyle), whose view draws

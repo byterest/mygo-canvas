@@ -874,7 +874,7 @@ func (h *windowHost) titleBar() TitleBar {
 		return TitleBar{}
 	}
 	t := h.conn.TitleBar()
-	return TitleBar{Height: float32(t.Height), Left: float32(t.Left), Right: float32(t.Right)}
+	return TitleBar{Top: float32(t.Top), Height: float32(t.Height), Left: float32(t.Left), Right: float32(t.Right)}
 }
 
 func (h *windowHost) vibrancy() bool {

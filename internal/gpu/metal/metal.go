@@ -506,7 +506,7 @@ func New(layer uintptr) (r *Renderer, err error) {
 		}
 		ml := send(send(class("CAMetalLayer"), "alloc"), "init")
 		if err = need(ml, "CAMetalLayer", "setDevice:", "setPixelFormat:", "setFramebufferOnly:", "setPresentsWithTransaction:",
-			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "setAutoresizingMask:", "nextDrawable"); err != nil {
+			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "nextDrawable"); err != nil {
 			release(&ml)
 			return
 		}
@@ -529,7 +529,11 @@ func New(layer uintptr) (r *Renderer, err error) {
 		r.synced = true
 		send(ml, "setColorspace:", srgb)
 		send(ml, "setOpaque:", 0)
-		send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
+		// It follows its view's size as it draws (fit); on macOS it also
+		// follows it between frames, as a resize stretches it.
+		if respondsTo(ml, "setAutoresizingMask:") {
+			send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
+		}
 		send(layer, "addSublayer:", ml)
 		r.layer, r.superlayer = ml, layer
 	})
@@ -883,7 +887,9 @@ func (r *Renderer) passPipeline(lib id, name string, format uint) (id, error) {
 // time, or 0 when it was compiled from another shader.metal (go generate
 // was not run since it changed) or Metal cannot load it.
 func (r *Renderer) compiledLibrary() id {
-	if gpu.SourceSum(shaderSource) != shaderLibrarySum {
+	// The library is compiled for macOS: iOS and its simulator compile the
+	// shader from its source.
+	if runtime.GOOS == "ios" || gpu.SourceSum(shaderSource) != shaderLibrarySum {
 		return 0
 	}
 	return r.libraryFromData(shaderLibrary)
@@ -917,7 +923,9 @@ func (r *Renderer) newTexture(w, h int, format, usage uint, pix []byte, stride i
 		return 0
 	}
 	send(desc, "setUsage:", uintptr(usage))
-	if usage&usageRenderTarget != 0 {
+	// Targets read back are managed on macOS; iOS has no managed storage,
+	// and its shared storage is the GPU's and the CPU's both.
+	if usage&usageRenderTarget != 0 && runtime.GOOS != "ios" {
 		send(desc, "setStorageMode:", storageManaged)
 	}
 	tex := send(r.device, "newTextureWithDescriptor:", desc)
@@ -1944,9 +1952,11 @@ func (r *Renderer) renderOffscreen(s *scene.Scene) (pix []byte, err error) {
 		if cb, err = r.encode(s, tex); err != nil {
 			return
 		}
-		blit := send(cb, "blitCommandEncoder")
-		send(blit, "synchronizeResource:", tex)
-		send(blit, "endEncoding")
+		if runtime.GOOS != "ios" { // shared there, with nothing to synchronize
+			blit := send(cb, "blitCommandEncoder")
+			send(blit, "synchronizeResource:", tex)
+			send(blit, "endEncoding")
+		}
 		send(cb, "commit")
 		send(cb, "waitUntilCompleted")
 		if int(send(cb, "status")) == statusError {
