@@ -10,7 +10,8 @@ import (
 // touchPan is a finger moving content that scrolls, as on a phone: a
 // press of a finger that moved at once (SurfaceEvent.Touch) over content
 // that scrolls, with nothing under it taking the pointer's moves of its
-// own, scrolls it rather than pressing it; let go moving, it glides on
+// own, scrolls it rather than pressing it, as it does what drags a value
+// (Drag), which a finger held still drags; let go moving, it glides on
 // and slows down.
 type touchPan struct {
 	on     bool
@@ -118,7 +119,12 @@ func (rt *engine) touchScrolls(x, y float32) bool {
 		if s == nil {
 			continue
 		}
-		if s.input != nil || s.flags&(flagEditable|flagSelectable|flagDraggable|flagTrackPointer|flagDragWindow) != 0 {
+		// What drags a value to drop elsewhere (Drag), as a card or a
+		// row, does not keep a quick finger from scrolling: a finger held
+		// still drags it, as on a phone. What moves of its own as the
+		// finger does (Draggable, a slider, a canvas) takes it at once.
+		valueOnly := s.drags() && s.input == nil && s.flags&(flagEditable|flagSelectable|flagTrackPointer|flagDragWindow) == 0
+		if !valueOnly && (s.input != nil || s.flags&(flagEditable|flagSelectable|flagDraggable|flagTrackPointer|flagDragWindow) != 0) {
 			return false
 		}
 		if s.flags&(flagScrollX|flagScrollY) != 0 {

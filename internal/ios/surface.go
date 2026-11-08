@@ -251,7 +251,10 @@ func (s *surface) touchesMoved(set id) {
 		}
 		cx, cy, dist := s.pair()
 		if dx, dy := cx-s.cx, cy-s.cy; dx != 0 || dy != 0 {
-			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: cx, Y: cy, DX: dx, DY: dy, Precise: true})
+			// The content goes with the fingers, as under a finger that
+			// pans (ui's touchPan) and on a touchpad (PointerScroll): two
+			// fingers going down scroll up, a negative DY.
+			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: cx, Y: cy, DX: -dx, DY: -dy, Precise: true})
 		}
 		if s.dist > 0 && dist > 0 {
 			if k := dist / s.dist; math.Abs(k-1) > 1e-3 {
