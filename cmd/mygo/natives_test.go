@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -133,5 +135,75 @@ func TestNatives(t *testing.T) {
 	writeFiles(t, dir, map[string]string{"resources/libx.so": "mine"})
 	if _, err := c.appResources("linux", "amd64"); err == nil || !strings.Contains(err.Error(), "would both be installed as libx.so") {
 		t.Errorf("a resource named as the library: %v", err)
+	}
+}
+
+// A library in a .tgz is taken out of it with its notices, for the
+// platforms it has a file for: an optional one is left out of the others.
+func TestNativesInAnArchive(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go list")
+	}
+	var archive bytes.Buffer
+	gz := gzip.NewWriter(&archive)
+	tw := tar.NewWriter(gz)
+	for _, f := range []struct{ name, body string }{
+		{"./include/x.h", "int x;"},
+		{"./bin/x.dll", "MZ the library"},
+		{"./LICENSE", "The packager's license."},
+		{"./licenses/b.txt", "B's license."},
+		{"./licenses/a.txt", "A's license."},
+	} {
+		tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o644, Size: int64(len(f.body)), Typeflag: tar.TypeReg})
+		tw.Write([]byte(f.body))
+	}
+	tw.Close()
+	gz.Close()
+	downloads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloads++
+		w.Write(archive.Bytes())
+	}))
+	defer srv.Close()
+	sum := sha256.Sum256(archive.Bytes())
+	manifest := fmt.Sprintf(`{"libraries": [{"name": "x", "optional": true, "files": {"windows-amd64":
+		{"name": "x.dll", "url": %q, "sha256": %q, "archive": "bin/x.dll", "license": ["LICENSE", "licenses/"]}}}]}`,
+		srv.URL+"/x.tgz", hex.EncodeToString(sum[:]))
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"go.mod":            "module example.com/app\n\ngo 1.27\n",
+		"main.go":           "package main\n\nimport _ \"example.com/app/lib\"\n\nfunc main() {}\n",
+		"lib/lib.go":        "package lib\n",
+		"lib/" + pluginFile: manifest,
+		"mygo.json":         `{"name": "App"}`,
+	})
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("LocalAppData", cache)
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list, err := c.natives("darwin", "arm64"); err != nil || len(list) != 0 {
+		t.Errorf("on a platform it has no file for, an optional library gives %+v, %v", list, err)
+	}
+	list, err := c.natives("windows", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].name != "x.dll" || list[1].name != "x-LICENSE.txt" {
+		t.Fatalf("natives = %+v", list)
+	}
+	if b, _ := os.ReadFile(list[0].path); string(b) != "MZ the library" {
+		t.Errorf("the library holds %q", b)
+	}
+	b, _ := os.ReadFile(list[1].path)
+	want := "==== LICENSE ====\n\nThe packager's license.\n\n==== licenses/a.txt ====\n\nA's license.\n\n==== licenses/b.txt ====\n\nB's license.\n"
+	if string(b) != want {
+		t.Errorf("the notices are\n%s\nwant\n%s", b, want)
+	}
+	if _, err := c.natives("windows", "amd64"); err != nil || downloads != 1 {
+		t.Errorf("downloads = %d, %v", downloads, err)
 	}
 }

@@ -13,9 +13,10 @@ import (
 	"unsafe"
 )
 
-// On Windows, Windows.Data.Pdf reads the document and renders its pages,
-// as Edge's reader of old and the Photos app do. It gives no text and no
-// links: Text returns ErrNoText, and Links none.
+// On Windows without PDFium (pdfium.go), Windows.Data.Pdf reads the
+// document and renders its pages, as Edge's reader of old and the Photos
+// app do. It gives no text and no links: Text returns ErrNoText, and Links
+// none.
 //
 // The Windows Runtime's objects are used on a thread of their own, which
 // joins the multithreaded apartment, so that their asynchronous calls
@@ -199,7 +200,16 @@ type winDoc struct {
 	sizes []Size
 }
 
+// open opens a document with PDFium, which gives its text and its links,
+// or with Windows.Data.Pdf where pdfium.dll is not next to the program.
 func open(data []byte) (engine, error) {
+	if e, err := openPDFium(data); err != ErrUnsupported {
+		return e, err
+	}
+	return openWinRT(data)
+}
+
+func openWinRT(data []byte) (engine, error) {
 	if !load() {
 		return nil, ErrUnsupported
 	}

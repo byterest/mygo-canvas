@@ -1,7 +1,8 @@
 // Package pdf reads PDF documents with the system's own PDF engine: PDFKit
-// and Core Graphics on macOS, Poppler on Linux, and Windows.Data.Pdf on
-// Windows, as the system's viewers read them, loaded at run time as the
-// rest of MyGo's native code is, without cgo.
+// and Core Graphics on macOS, Poppler on Linux, and PDFium, or
+// Windows.Data.Pdf without it, on Windows, as the system's viewers read
+// them, loaded at run time as the rest of MyGo's native code is, without
+// cgo.
 //
 // A Document renders its pages to images at any scale, or a part of one,
 // for a page shown zoomed in, and gives the text of a page with the box of
@@ -20,8 +21,9 @@
 // corner of the page as it shows, its rotation applied. The methods of a
 // Document may be called from any goroutine; it runs one at a time.
 //
-// Windows has no text of a page to give: Text returns ErrNoText there, and
-// Links none. Where the system has no PDF engine (in a browser, or on Linux
+// On Windows, PDFium reads the document when pdfium.dll is next to the
+// program; without it, Windows has no text of a page to give: Text returns
+// ErrNoText there, and Links none. Where the system has no PDF engine (in a browser, or on Linux
 // without Poppler's GLib library, libpoppler-glib), Open returns
 // ErrUnsupported.
 package pdf
@@ -81,6 +83,9 @@ type Document struct {
 	closed bool
 }
 
+// openEngine opens a document with the system's engine; tests change it.
+var openEngine = open
+
 // engine is what a system's PDF engine does with a document.
 type engine interface {
 	pages() int
@@ -96,7 +101,7 @@ func Open(data []byte) (*Document, error) {
 	if len(data) < 5 || string(data[:5]) != "%PDF-" {
 		return nil, ErrInvalid
 	}
-	e, err := open(data)
+	e, err := openEngine(data)
 	if err != nil {
 		return nil, err
 	}
