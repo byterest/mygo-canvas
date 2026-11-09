@@ -601,6 +601,11 @@ func scrollBy(s *state, dx, dy float32) bool {
 // innermost container around the focus that can go that way, or under the
 // pointer without a focus, and reports whether one moved.
 func (rt *engine) scrollKey(mods Modifiers, key Key) bool {
+	if s := rt.states[rt.focused]; s != nil && (s.flags&flagEditable != 0 || s.textClient != nil) {
+		// What the focus types in has the keys: Space types a space, and
+		// the arrows move the caret, rather than scroll what is around it.
+		return false
+	}
 	const line, far = 40, 1e9
 	var dx, dy, page float32
 	switch {
