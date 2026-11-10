@@ -72,6 +72,10 @@ type Theme struct {
 	TableBorder, TableHeader, TableStripe Color
 	TableCellPadding                      [2]float32
 	TableMaxColumn                        float32
+	// TableFill makes tables as wide as the view, their columns sharing
+	// the room their text leaves as they share the text, rather than as
+	// wide as their text: the tables of a document rather than of a chat.
+	TableFill bool
 
 	// Mark is the background of text marked with <mark>.
 	Mark Color

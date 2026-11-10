@@ -585,6 +585,12 @@ func computeBox(e *node, w, h float32) {
 		lh = inf
 	}
 	uw, uh := boxLayout(e, lw, lh, true)
+	if e.flags&flagScrollX != 0 && uw < cw && growsIn(e) {
+		// Content narrower than the container that grows takes the room
+		// the container has, as in a row that does not scroll: a table as
+		// wide as its view until it is wider, and then it scrolls.
+		uw, uh = boxLayout(e, cw, lh, true)
+	}
 	if e.flags&flagScrollX != 0 && uw < cw && e.rtl() {
 		// Laid out from the right of what the content takes, which goes
 		// at the right of the container.
@@ -1407,4 +1413,14 @@ func attach(c, e *node, pw, ph float32) {
 	c.x = e.border[3] + ax*pw - sx*w + dx
 	c.y = e.border[0] + ay*ph - sy*h + dy
 	layoutBox(c, w, h)
+}
+
+// growsIn reports whether a child of e in its flow grows.
+func growsIn(e *node) bool {
+	for c := e.first; c != nil; c = c.next {
+		if c.flags&flagAbsolute == 0 && c.grow > 0 {
+			return true
+		}
+	}
+	return false
 }

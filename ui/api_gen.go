@@ -3847,6 +3847,18 @@ func (_handle Element) DrawOver(fn func(p *Painter, r Rect)) Element {
 	return wrapElement(_node.DrawOver(fn))
 }
 
+// DropPoint returns where the files DroppedFiles returns were dropped,
+// relative to the element's box.
+func (_handle Element) DropPoint() (float32, float32) {
+	_node := _handle.node()
+	if _node == nil {
+		return 0, 0
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.DropPoint()
+}
+
 // DroppedFiles returns the paths of the files dropped on the element since
 // the last frame, nil when none, and makes the element take files dragged
 // over it.
@@ -3953,6 +3965,20 @@ func (_handle Element) FileDragOver() bool {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.FileDragOver()
+}
+
+// FileDragPoint returns where files dragged from another app are over the
+// element, relative to its box, and whether they are over it, for showing
+// where they would land, as a text's caret between two letters. The
+// element gets a frame as they move over it.
+func (_handle Element) FileDragPoint() (float32, float32, bool) {
+	_node := _handle.node()
+	if _node == nil {
+		return 0, 0, false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.FileDragPoint()
 }
 
 // Fill makes the element as large as its parent's content.

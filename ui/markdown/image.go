@@ -100,7 +100,12 @@ func (st *viewState) images(c *ui.Context, i int) ui.Element {
 				w, h = s.Size()
 			}
 			if w > 0 && h > 0 {
+				// As large as it is at the size the view is read at: a
+				// view zoomed (Theme.Zoom) zooms its pictures as its text.
 				img.AspectRatio(w / h)
+				if th.Zoom > 0 {
+					img.Width(th.px(w))
+				}
 			}
 			if n.Title != "" {
 				img.Tooltip(n.Title)

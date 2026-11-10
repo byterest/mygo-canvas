@@ -112,6 +112,11 @@ type State struct {
 	// of press and hold, goes to the editor alone. The key after the
 	// first of a chord of Bindings, as Cmd+K Cmd+0, is the chord's.
 	OnInput func(ev ui.InputEvent) bool
+	// OnDropFiles, when set, takes files dragged from another app, as
+	// Finder's pictures, onto the editor: while they are over it, a caret
+	// shows where they would go, and dropped, they come to it with the
+	// offset of that place, for the text that stands for them.
+	OnDropFiles func(paths []string, offset int)
 	// NoInputMethod turns the system's input methods off while the
 	// editor has the keyboard (ui's InputMethod): keys type the
 	// characters of the keyboard's layout, which come to OnInput as
@@ -213,7 +218,7 @@ func (st *State) options() options {
 		autoClose: !st.NoAutoClose, folding: !st.NoFolding, activeLine: !st.NoActiveLine, cursorShape: st.CursorShape, fitContent: st.FitContent,
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,
 		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,
-		onGutterClick: st.OnGutterClick, contextMenu: st.ContextMenu, onInput: st.OnInput, noInputMethod: st.NoInputMethod, minDigits: 3,
+		onGutterClick: st.OnGutterClick, contextMenu: st.ContextMenu, onInput: st.OnInput, onDropFiles: st.OnDropFiles, noInputMethod: st.NoInputMethod, minDigits: 3,
 		renderFindBar: st.RenderFindBar, renderGoToLine: st.RenderGoToLine,
 		renderCompletions: st.RenderCompletions, renderHover: st.RenderHover,
 	}

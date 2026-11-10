@@ -54,6 +54,7 @@ type options struct {
 	onGutterClick func(int)
 	contextMenu   func(m *ui.Menu)
 	onInput       func(ui.InputEvent) bool
+	onDropFiles   func(paths []string, offset int)
 	noInputMethod bool
 	// The parts' render functions, nil for the editor's own.
 	renderFindBar     func(*ui.Context, ui.Element, *FindBar)
@@ -122,9 +123,11 @@ type fold struct{ start, end int }
 // editor is a code editor: a view of a buffer with selections, the input
 // that edits it, and its overlays.
 type editor struct {
-	view  view
-	o     options
-	theme *Theme
+	view view
+	o    options
+	// dropAt is where files dragged over the editor would go, or -1.
+	dropAt int
+	theme  *Theme
 	// texts are MyGo's strings in the window's language, as of the last
 	// frame.
 	texts l10n.Messages

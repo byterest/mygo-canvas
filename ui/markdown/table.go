@@ -63,6 +63,9 @@ func (st *viewState) table(c *ui.Context, i int, base spanStyle) ui.Element {
 	scroll := ui.ScrollHorizontal(c).AlignSelf(ui.Stretch)
 	return scroll.Children(func() {
 		grid := ui.Column(c).Border(th.px(1), th.TableBorder).Radius(th.em(0.3)).Clip().Shrink(0).Role(ui.RoleTable)
+		if th.TableFill {
+			grid.Grow(1) // the scroll is a row: the room it has, and more scrolls
+		}
 		grid.Children(func() {
 			n := 0
 			for r := i + 1; r < d.Block(i).Next; r = d.Block(r).Next {
@@ -95,6 +98,9 @@ func (st *viewState) table(c *ui.Context, i int, base spanStyle) ui.Element {
 							role = ui.RoleColumnHeader
 						}
 						box := ui.Column(c).Width(widths[k]).Padding(padY, padX).Role(role)
+						if th.TableFill {
+							box.Grow(widths[k])
+						}
 						if k > 0 {
 							box.BorderWidth(0, 0, 0, th.px(1)).BorderColor(th.TableBorder)
 						}

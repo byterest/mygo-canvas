@@ -117,6 +117,7 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 			h.byPointer = true
 		}
 	}
+	ed.dropFiles(e, o)
 	e.Children(func() {
 		// Popups attach to boxes at the caret, or at the text hovered.
 		anchor := func(key string, at int) (ui.Element, bool) {
@@ -278,5 +279,26 @@ func (ed *editor) menu(m *ui.Menu) {
 	if ed.o.contextMenu != nil {
 		m.Separator()
 		ed.o.contextMenu(m)
+	}
+}
+
+// dropFiles takes files dragged onto the editor, for OnDropFiles: where
+// they would go while they are over it, and where they went once dropped.
+func (ed *editor) dropFiles(e ui.Element, o options) {
+	ed.dropAt = -1
+	if o.onDropFiles == nil || o.readOnly {
+		return
+	}
+	at := func(x, y float32) int {
+		cx, cy := ed.toContent(x, y)
+		return ed.offsetAt(cx, cy)
+	}
+	if x, y, over := e.FileDragPoint(); over {
+		ed.dropAt = at(x, y)
+	}
+	if files := e.DroppedFiles(); len(files) > 0 {
+		off := at(e.DropPoint())
+		ed.dropAt = -1
+		o.onDropFiles(files, off)
 	}
 }

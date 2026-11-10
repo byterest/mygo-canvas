@@ -671,6 +671,19 @@ func (t *Tester) Scroll(x, y, dx, dy float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true})
 }
 
+// DragFilesOver drags files from another app over (x, y), as from Finder,
+// without dropping them, and reports whether an element there takes them;
+// negative coordinates drag them out of the window.
+func (t *Tester) DragFilesOver(x, y float32) bool {
+	if x < 0 || y < 0 {
+		t.send(platform.SurfaceEvent{Kind: platform.FileDragLeave})
+		return false
+	}
+	taken := t.rt.event(platform.SurfaceEvent{Kind: platform.FileDragOver, X: float64(x), Y: float64(y)})
+	t.settle()
+	return taken
+}
+
 // DropFiles drops files dragged from another app at (x, y), as from
 // Finder, and reports whether an element took them (DroppedFiles).
 func (t *Tester) DropFiles(x, y float32, paths ...string) bool {

@@ -124,21 +124,38 @@ func (b *CodeBlockView) CopyButton(c *ui.Context) ui.Element {
 		btn.Background(th.Text.Alpha(0.08))
 	}
 	btn.Children(func() {
-		icon, label := copyIcon, tx.Copy()
+		icon, label, ink := copyIcon, tx.Copy(), th.Muted
 		if copied {
 			icon, label = checkIcon, tx.Copied()
+			if ok := c.Theme().Success; ok.A > 0 {
+				ink = ok
+			}
+		}
+		// The copy turns into a check as it is done, which springs up a
+		// little as it lands, and the word with it, in the color of what
+		// went well; both go back as they came.
+		ink = btn.AnimateColor("copy-ink", ink, ui.Animation{Duration: 180 * time.Millisecond})
+		pop := float32(1)
+		if copied && c.Now().Sub(cs.copiedAt) < copyPop {
+			pop = 1.25
 		}
 		size := th.em(0.95)
-		ui.Icon(c, icon).Size(size, size).TextColor(th.Muted)
-		ui.Text(c, label).FontSize(th.em(0.8)).TextColor(th.Muted)
+		ui.Icon(c, icon).Size(size, size).TextColor(ink).
+			ContentTransition(ui.ContentTransition{}).
+			AnimatePose(ui.Pose{Scale: pop}, ui.Animation{Spring: ui.SpringOptions{Duration: 320 * time.Millisecond, Bounce: 0.45}})
+		ui.Text(c, label).FontSize(th.em(0.8)).TextColor(ink).ContentTransition(ui.ContentTransition{})
 	})
 	if btn.Clicked() {
 		c.WriteClipboard(b.Code())
 		cs.copiedAt = c.Now()
+		c.After(copyPop)
 		c.After(2 * time.Second)
 	}
 	return btn
 }
+
+// copyPop is how long the check of a copy is larger, before it settles.
+const copyPop = 140 * time.Millisecond
 
 // Body builds the block's code, highlighted, selectable with the view's
 // text, scrolling sideways unless Options.WrapCode.

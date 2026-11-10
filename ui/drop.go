@@ -23,6 +23,29 @@ func (e *node) FileDragOver() bool {
 	return e.c.rt.dropOver == e.id
 }
 
+// FileDragPoint returns where files dragged from another app are over the
+// element, relative to its box, and whether they are over it, for showing
+// where they would land, as a text's caret between two letters. The
+// element gets a frame as they move over it.
+func (e *node) FileDragPoint() (x, y float32, over bool) {
+	e.flags |= flagDropTarget
+	rt := e.c.rt
+	if rt.dropOver != e.id || !e.hasState() {
+		return 0, 0, false
+	}
+	x, y = e.st.local(rt.dropX, rt.dropY)
+	return x, y, true
+}
+
+// DropPoint returns where the files DroppedFiles returns were dropped,
+// relative to the element's box.
+func (e *node) DropPoint() (x, y float32) {
+	if !e.hasState() {
+		return 0, 0
+	}
+	return e.st.local(e.st.fileX, e.st.fileY)
+}
+
 // dropTarget returns the innermost element at (x, y) that takes files.
 func (rt *engine) dropTarget(x, y float32) *state {
 	for _, id := range rt.hitChain(x, y) {
@@ -42,10 +65,11 @@ func (rt *engine) fileDrag(x, y float32) bool {
 			over = s.id
 		}
 	}
-	if over != rt.dropOver {
+	if over != rt.dropOver || over != 0 && (x != rt.dropX || y != rt.dropY) {
 		rt.dropOver = over
 		rt.requestFrame()
 	}
+	rt.dropX, rt.dropY = x, y
 	return over != 0
 }
 
@@ -57,6 +81,7 @@ func (rt *engine) fileDrop(x, y float32, files []string) bool {
 		return false
 	}
 	s.dropped = append(s.dropped, files...)
+	s.fileX, s.fileY = x, y
 	rt.requestFrame()
 	return true
 }

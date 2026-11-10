@@ -136,6 +136,15 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 	text := ui.Rect{X: r.X + ed.gutterW, Y: r.Y, W: r.W - ed.gutterW, H: r.H}
 	p.Clip(text, 0, func() {
 		ed.paintLines(p, r, &f)
+		if ed.dropAt >= 0 {
+			// Where files dragged over would go: a caret of the accent.
+			if cr, ok := ed.caretRect(ed.dropAt); ok {
+				x := r.X + ed.textX + cr.X - ed.scrollX
+				y := r.Y + float32(float64(cr.Y)-ed.scrollY)
+				p.Fill(ui.Rect{X: x - 1, Y: y, W: 2, H: cr.H}, p.Theme().Accent, 1)
+				p.Fill(ui.Rect{X: x - 3, Y: y - 2, W: 6, H: 6}, p.Theme().Accent, 3)
+			}
+		}
 	})
 	ed.paintGutter(p, r, &f)
 	ed.paintScrollbars(p, r, &f)
