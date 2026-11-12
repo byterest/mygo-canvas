@@ -423,7 +423,7 @@ func (ed *editor) trackWidth() float32 {
 	if ed.o.fitContent {
 		return 0
 	}
-	return scrollbarWidth
+	return scrollbarWidth * ed.view.opticalZoom()
 }
 
 // scrollbars reports which scroll bars the editor shows, and takes

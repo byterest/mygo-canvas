@@ -383,7 +383,8 @@ func (v *view) setTheme(ct *Theme) {
 
 // setWrap turns soft wrapping on at width, or off.
 func (v *view) setWrap(on bool, width float32) {
-	width = float32(math.Floor(float64(width)))
+	k := v.opticalZoom()
+	width = float32(math.Floor(float64(text.Unscale(width, k)))) * k
 	if on == v.wrap && (!on || width == v.wrapWidth) {
 		return
 	}
@@ -392,6 +393,15 @@ func (v *view) setWrap(on bool, width float32) {
 	v.heights.dirty = true
 	v.wrapAt = 0
 	v.lines.m = nil
+}
+
+// opticalZoom changes glyph rasterization size while keeping layout in the
+// original font's coordinates, as Markdown's OpticalScale does.
+func (v *view) opticalZoom() float32 {
+	if k := v.font.OpticalScale; k > 0 && !math.IsInf(float64(k), 0) {
+		return k
+	}
+	return 1
 }
 
 // setBuffer shows another buffer.
@@ -862,8 +872,9 @@ func (v *view) wrapBreaks(s string, faces []faceRun) []int {
 	if !v.wrap || v.wrapWidth <= 0 {
 		return nil
 	}
-	width := v.wrapWidth
-	if len(faces) == 0 && v.widths.mono > 0 && float32(len(s))*v.widths.mono <= width {
+	k := v.opticalZoom()
+	width := text.Unscale(v.wrapWidth, k)
+	if len(faces) == 0 && v.widths.mono > 0 && float32(len(s))*text.Unscale(v.widths.mono, k) <= width {
 		return nil
 	}
 	fi := 0
@@ -887,18 +898,18 @@ func (v *view) wrapBreaks(s string, faces []faceRun) []int {
 				cw = v.widthsOf(faces[fi].face)
 			}
 		}
-		w := cw.of(r)
-		if x+w > width && i > start {
+		w := text.Unscale(cw.of(r), k)
+		if x+w > width+0.001 && i > start {
 			at := i
 			if last > start {
 				at = last
 			}
 			breaks = append(breaks, at)
 			if indent == 0 {
-				indent = v.wrapIndent(s)
+				indent = text.Unscale(v.wrapIndent(s), k)
 			}
 			// Measure the new row from its start, after the indent.
-			x = indent + v.runsWidth(s, faces, at, i)
+			x = indent + text.Unscale(v.runsWidth(s, faces, at, i), k)
 			start, last = at, -1
 		}
 		x += w

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/l10n"
+	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -614,6 +615,7 @@ func (ed *editor) numbersOn() bool {
 
 func (ed *editor) gutterWidth() float32 {
 	v := &ed.view
+	k := v.opticalZoom()
 	w := float32(0)
 	if ed.numbersOn() {
 		digits := max(ed.o.minDigits, len(strconv.Itoa(v.text.LineCount())))
@@ -623,19 +625,19 @@ func (ed *editor) gutterWidth() float32 {
 		w += v.lineHeight * 0.8
 	}
 	if ed.o.diffBase != nil {
-		w += 6
+		w += 6 * k
 	}
 	if len(ed.o.gutterMarks) > 0 && !ed.numbersOn() {
 		w += v.lineHeight * 0.7
 	}
 	if w > 0 {
-		w += 4
+		w += 4 * k
 	}
 	if ed.o.decor != nil {
 		// Room for the change bars at the gutter's left edge.
-		w += 6
+		w += 6 * k
 	}
-	return float32(math.Ceil(float64(w)))
+	return float32(math.Ceil(float64(text.Unscale(w, k)))) * k
 }
 
 // visibleLines returns the lines that show in the frame's view, through

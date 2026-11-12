@@ -38,18 +38,19 @@ type frame struct {
 func (ed *editor) layout(w, h, scale float32) {
 	v := &ed.view
 	v.setStyle(ed.o.font, ed.o.lineHeight, scale, ed.tabSize())
+	k := v.opticalZoom()
 	ed.gutterW = ed.gutterWidth()
 	pad := float32(4)
 	if ed.gutterW == 0 {
 		pad = 8
 	}
-	ed.textX = ed.gutterW + pad
+	ed.textX = ed.gutterW + pad*k
 	if ed.o.signs {
 		ed.textX += 2 * v.charWidth
 	}
 	ed.viewH = h
 	wrap := ed.o.wrap != ed.toggledWrap
-	ww := w - ed.textX - ed.trackWidth() - 4
+	ww := w - ed.textX - ed.trackWidth() - 4*k
 	if ed.o.wrapColumn > 0 {
 		ww = min(ww, float32(ed.o.wrapColumn)*v.charWidth)
 	}
