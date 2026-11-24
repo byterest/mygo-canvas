@@ -4,6 +4,7 @@ package darwin
 
 import (
 	"bytes"
+	_ "embed"
 	"image"
 	pngenc "image/png"
 	"runtime"
@@ -485,25 +486,22 @@ func (s *surface) applyCursor() {
 	send(nsCursor(s.cursor), "set")
 }
 
-// nsCursor returns the NSCursor of c. The diagonal resize cursors are the
-// frame resize cursors of macOS 15, else AppKit's own older ones.
+// nsCursor returns the NSCursor of c. Older macOS releases use an image
+// cursor for the diagonal directions introduced in macOS 15.
 func nsCursor(c platform.Cursor) id {
 	cls := class("NSCursor")
 	if c == platform.CursorResizeNWSE || c == platform.CursorResizeNESW {
-		corner, older := uintptr(1|2), "_windowResizeNorthWestSouthEastCursor" // top left
-		if c == platform.CursorResizeNESW {
-			corner, older = 1|8, "_windowResizeNorthEastSouthWestCursor" // top right
+		nesw := c == platform.CursorResizeNESW
+		corner := uintptr(1 | 2) // top left
+		if nesw {
+			corner = 1 | 8 // top right
 		}
 		if respondsTo(cls, "frameResizeCursorFromPosition:inDirections:") {
 			if cur := send(cls, "frameResizeCursorFromPosition:inDirections:", corner, 1|2); cur != 0 { // inward and outward
 				return cur
 			}
 		}
-		if respondsTo(cls, older) {
-			if cur := send(cls, older); cur != 0 {
-				return cur
-			}
-		}
+		return diagonalResizeCursor(nesw)
 	}
 	if c == platform.CursorNone {
 		return noCursor()
@@ -520,7 +518,25 @@ func nsCursor(c platform.Cursor) id {
 	return send(cls, name)
 }
 
-var hiddenCursor id
+//go:embed cursor_resize_nwse.png
+var resizeNWSEImage []byte
+
+//go:embed cursor_resize_nesw.png
+var resizeNESWImage []byte
+
+var hiddenCursor, resizeNWSECursor, resizeNESWCursor id
+
+func diagonalResizeCursor(nesw bool) id {
+	data, cached := resizeNWSEImage, &resizeNWSECursor
+	if nesw {
+		data, cached = resizeNESWImage, &resizeNESWCursor
+	}
+	if *cached == 0 {
+		// The PNG has 36 pixels per side for an 18-point Retina cursor.
+		*cached = cursorWithImage(data, NSSize{Width: 18, Height: 18}, NSPoint{X: 9, Y: 9})
+	}
+	return *cached
+}
 
 // noCursor returns a cursor of a transparent image, which hides the
 // pointer while it is over the view, unlike NSCursor's hide, which hides
@@ -532,15 +548,28 @@ func noCursor() id {
 		if err := pngenc.Encode(&png, image.NewNRGBA(image.Rect(0, 0, 1, 1))); err != nil {
 			return send(class("NSCursor"), "arrowCursor")
 		}
-		b := png.Bytes()
-		withPool(func() {
-			data := send(class("NSData"), "dataWithBytes:length:", uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)))
-			img := send(send(class("NSImage"), "alloc"), "initWithData:", uintptr(data))
-			hiddenCursor = msgInitIDPoint(send(class("NSCursor"), "alloc"), sel("initWithImage:hotSpot:"), img, NSPoint{})
-			send(img, "release")
-		})
+		hiddenCursor = cursorWithImage(png.Bytes(), NSSize{Width: 1, Height: 1}, NSPoint{})
 	}
 	return hiddenCursor
+}
+
+func cursorWithImage(png []byte, size NSSize, hotSpot NSPoint) id {
+	var cursor id
+	withPool(func() {
+		data := send(class("NSData"), "dataWithBytes:length:", uintptr(unsafe.Pointer(&png[0])), uintptr(len(png)))
+		img := send(send(class("NSImage"), "alloc"), "initWithData:", uintptr(data))
+		if img == 0 {
+			return
+		}
+		defer release(img)
+		msgSetSize(img, sel("setSize:"), size)
+		cursor = msgInitIDPoint(send(class("NSCursor"), "alloc"), sel("initWithImage:hotSpot:"), img, hotSpot)
+	})
+	runtime.KeepAlive(png)
+	if cursor == 0 {
+		return send(class("NSCursor"), "arrowCursor")
+	}
+	return cursor
 }
 
 func (s *surface) SetCursor(c platform.Cursor) {

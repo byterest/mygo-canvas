@@ -496,7 +496,7 @@ func TestBackgroundThrottlingOff(handle uintptr, webView bool) (off bool, settin
 	off = true
 	withPool(func() {
 		prefs := send(send(w.web, "configuration"), "preferences")
-		for _, p := range throttlingPrefs {
+		check := func(p throttlingPref) {
 			if respondsTo(prefs, p.get) {
 				settings++
 				v := uintptr(send(prefs, p.get))
@@ -506,7 +506,13 @@ func TestBackgroundThrottlingOff(handle uintptr, webView bool) (off bool, settin
 				off = off && v == p.off
 			}
 		}
-		if respondsTo(w.web, "_windowOcclusionDetectionEnabled") {
+		check(publicThrottlingPref)
+		if allowPrivateAPI {
+			for _, p := range privateThrottlingPrefs {
+				check(p)
+			}
+		}
+		if allowPrivateAPI && respondsTo(w.web, "_windowOcclusionDetectionEnabled") {
 			settings++
 			off = off && !sendBool(w.web, "_windowOcclusionDetectionEnabled")
 		}

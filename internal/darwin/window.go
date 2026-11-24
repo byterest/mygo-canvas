@@ -466,8 +466,10 @@ func (w *window) createWebView(content NSRect) {
 		}
 	}
 	prefs := send(cfg, "preferences")
-	send(prefs, "setValue:forKey:", uintptr(nsBool(o.DevTools)), uintptr(nsString("developerExtrasEnabled")))
-	send(prefs, "setValue:forKey:", uintptr(nsBool(true)), uintptr(nsString("allowFileAccessFromFileURLs")))
+	if allowPrivateAPI {
+		send(prefs, "setValue:forKey:", uintptr(nsBool(o.DevTools)), uintptr(nsString("developerExtrasEnabled")))
+		send(prefs, "setValue:forKey:", uintptr(nsBool(true)), uintptr(nsString("allowFileAccessFromFileURLs")))
+	}
 	if respondsTo(prefs, "setElementFullscreenEnabled:") {
 		send(prefs, "setElementFullscreenEnabled:", 1)
 	}
@@ -485,7 +487,7 @@ func (w *window) createWebView(content NSRect) {
 	// Picture in picture, which WKWebView keeps to Safari: the button of
 	// videos' controls, their context menu's item and
 	// requestPictureInPicture().
-	if respondsTo(prefs, "_setAllowsPictureInPictureMediaPlayback:") {
+	if allowPrivateAPI && respondsTo(prefs, "_setAllowsPictureInPictureMediaPlayback:") {
 		send(prefs, "_setAllowsPictureInPictureMediaPlayback:", boolArg(o.PictureInPicture))
 	}
 	setAutoplay(cfg, o.Autoplay, o.Native != 0)
@@ -519,7 +521,9 @@ func (w *window) createWebView(content NSRect) {
 	send(w.web, "setAutoresizingMask:", nsViewWidthHeightSizable)
 	if o.Transparent || o.BackgroundColor != nil || o.Vibrancy != "" {
 		// Let the window color show until the page paints.
-		send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+		if allowPrivateAPI {
+			send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+		}
 		if o.BackgroundColor != nil && respondsTo(w.web, "setUnderPageBackgroundColor:") {
 			send(w.web, "setUnderPageBackgroundColor:", uintptr(nsColor(*o.BackgroundColor)))
 		}
@@ -527,7 +531,7 @@ func (w *window) createWebView(content NSRect) {
 	if respondsTo(w.web, "setInspectable:") {
 		send(w.web, "setInspectable:", boolArg(o.DevTools))
 	}
-	if o.NoBackgroundThrottling && respondsTo(w.web, "_setWindowOcclusionDetectionEnabled:") {
+	if allowPrivateAPI && o.NoBackgroundThrottling && respondsTo(w.web, "_setWindowOcclusionDetectionEnabled:") {
 		// A window behind others counts as visible.
 		send(w.web, "_setWindowOcclusionDetectionEnabled:", 0)
 	}
@@ -549,7 +553,7 @@ func (w *window) createWebView(content NSRect) {
 		msgSetFloat(w.web, sel("setPageZoom:"), o.Zoom)
 	}
 	send(w.web, "addObserver:forKeyPath:options:context:", uintptr(w.delegate), uintptr(nsString("title")), 1, 0)
-	if respondsTo(w.web, "_isPlayingAudio") {
+	if allowPrivateAPI && respondsTo(w.web, "_isPlayingAudio") {
 		// WebKit tells its changes with willChangeValueForKey: and
 		// didChangeValueForKey:, as Safari's tabs' speaker icons hear.
 		w.observesAudio = true
@@ -557,7 +561,7 @@ func (w *window) createWebView(content NSRect) {
 	}
 	// WebKit tells their changes as for _isPlayingAudio.
 	for kind, key := range captureKeys {
-		if respondsTo(w.web, key) {
+		if key != "" && respondsTo(w.web, key) {
 			w.observesCapture[kind] = true
 			send(w.web, "addObserver:forKeyPath:options:context:", uintptr(w.delegate), uintptr(nsString(key)), 0, 0)
 		}
@@ -572,12 +576,15 @@ func (w *window) createWebView(content NSRect) {
 // ones, looked up with respondsToSelector:, that throttle a hidden page's
 // timers to once a second, suspend its CSS animations and let App Nap
 // slow down its process.
-var throttlingPrefs = [...]struct {
+type throttlingPref struct {
 	get, set string
 	off      uintptr
 	boolean  bool
-}{
-	{"inactiveSchedulingPolicy", "setInactiveSchedulingPolicy:", 2, false},
+}
+
+var publicThrottlingPref = throttlingPref{"inactiveSchedulingPolicy", "setInactiveSchedulingPolicy:", 2, false}
+
+var privateThrottlingPrefs = [...]throttlingPref{
 	{"_hiddenPageDOMTimerThrottlingEnabled", "_setHiddenPageDOMTimerThrottlingEnabled:", 0, true},
 	{"_hiddenPageCSSAnimationSuspensionEnabled", "_setHiddenPageCSSAnimationSuspensionEnabled:", 0, true},
 	{"_pageVisibilityBasedProcessSuppressionEnabled", "_setPageVisibilityBasedProcessSuppressionEnabled:", 0, true},
@@ -594,23 +601,23 @@ func setBackgroundThrottling(cfg, prefs id, throttle, shared bool) {
 		defaults = alloc("WKPreferences")
 		defer release(defaults)
 	}
-	get := func(o id, p int) uintptr {
-		v := uintptr(send(o, throttlingPrefs[p].get))
-		if throttlingPrefs[p].boolean {
+	get := func(o id, p throttlingPref) uintptr {
+		v := uintptr(send(o, p.get))
+		if p.boolean {
 			v = boolArg(byte(v) != 0)
 		}
 		return v
 	}
-	for i, p := range throttlingPrefs {
+	apply := func(p throttlingPref) {
 		if !respondsTo(prefs, p.set) || !respondsTo(prefs, p.get) {
-			continue
+			return
 		}
 		v := p.off
 		if throttle {
-			v = get(defaults, i)
+			v = get(defaults, p)
 		}
-		if get(prefs, i) == v {
-			continue
+		if get(prefs, p) == v {
+			return
 		}
 		if shared && respondsTo(prefs, "copyWithZone:") {
 			shared = false
@@ -619,6 +626,12 @@ func setBackgroundThrottling(cfg, prefs id, throttle, shared bool) {
 			release(prefs) // the configuration keeps it
 		}
 		send(prefs, p.set, v)
+	}
+	apply(publicThrottlingPref)
+	if allowPrivateAPI {
+		for _, pref := range privateThrottlingPrefs {
+			apply(pref)
+		}
 	}
 }
 
@@ -644,7 +657,7 @@ func setAutoplay(cfg id, allow, opened bool) {
 // stopObserving removes the key-value observers createWebView added.
 func (w *window) stopObserving() {
 	send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("title")))
-	if w.observesAudio {
+	if allowPrivateAPI && w.observesAudio {
 		w.observesAudio = false
 		send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("_isPlayingAudio")))
 	}
@@ -1110,7 +1123,9 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 		default:
 			send(w.win, "setBackgroundColor:", uintptr(nsColor(c)))
 		}
-		send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+		if allowPrivateAPI {
+			send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+		}
 		if respondsTo(w.web, "setUnderPageBackgroundColor:") {
 			send(w.web, "setUnderPageBackgroundColor:", uintptr(nsColor(c)))
 		}
@@ -1221,7 +1236,9 @@ func (w *window) SetVibrancy(material string) {
 			send(w.effect, "setAutoresizingMask:", nsViewWidthHeightSizable)
 			// Behind the page and a docked inspector.
 			send(w.view, "addSubview:positioned:relativeTo:", uintptr(w.effect), ^uintptr(0), 0) // NSWindowBelow
-			send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+			if allowPrivateAPI {
+				send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+			}
 			w.roundEffect()
 		}
 		if glass {
@@ -1239,7 +1256,7 @@ func (w *window) SetVibrancy(material string) {
 // is. NSVisualEffectView has a public setting for it (its state, which
 // SetVibrancy sets); NSGlassEffectView has none.
 func (w *window) SetActiveAppearance(v bool) {
-	if respondsTo(w.win, "_setForceMainAppearance:") {
+	if allowPrivateAPI && respondsTo(w.win, "_setForceMainAppearance:") {
 		send(w.win, "_setForceMainAppearance:", boolArg(v))
 	}
 }
@@ -1500,7 +1517,7 @@ func (w *window) UserAgent() string {
 	var s string
 	withPool(func() {
 		s = goString(send(w.web, "customUserAgent"))
-		if s == "" && respondsTo(w.web, "_userAgent") {
+		if allowPrivateAPI && s == "" && respondsTo(w.web, "_userAgent") {
 			s = goString(send(w.web, "_userAgent"))
 		}
 	})
@@ -1511,7 +1528,7 @@ func (w *window) UserAgent() string {
 // private -[WKWebView _webProcessIdentifier] (a pid_t), 0 when WebKit
 // doesn't answer it or runs no process for the page yet.
 func (w *window) ProcessID() int {
-	if !respondsTo(w.web, "_webProcessIdentifier") {
+	if !allowPrivateAPI || !respondsTo(w.web, "_webProcessIdentifier") {
 		return 0
 	}
 	return int(int32(send(w.web, "_webProcessIdentifier")))
@@ -1520,7 +1537,7 @@ func (w *window) ProcessID() int {
 // IsAudible reports WebKit's private -[WKWebView _isPlayingAudio]
 // (macOS 10.13.4+), false when WebKit doesn't answer it.
 func (w *window) IsAudible() bool {
-	return respondsTo(w.web, "_isPlayingAudio") && sendBool(w.web, "_isPlayingAudio")
+	return allowPrivateAPI && respondsTo(w.web, "_isPlayingAudio") && sendBool(w.web, "_isPlayingAudio")
 }
 
 // wkMediaAudioMuted is _WKMediaAudioMuted, the bit of _WKMediaMutedState
@@ -1531,7 +1548,7 @@ const wkMediaAudioMuted = 1 << 0
 // canMute reports whether WebKit answers the private selectors that mute
 // a page, as Safari mutes a tab (macOS 10.13+).
 func (w *window) canMute() bool {
-	return respondsTo(w.web, "_mediaMutedState") && respondsTo(w.web, "_setPageMuted:")
+	return allowPrivateAPI && respondsTo(w.web, "_mediaMutedState") && respondsTo(w.web, "_setPageMuted:")
 }
 
 // wkMediaCaptureDevicesMuted is _WKMediaCaptureDevicesMuted, the bit of
@@ -1546,7 +1563,7 @@ const wkMediaCaptureDevicesMuted = 1 << 1
 // (captureMuted), the other is unmuted again after _setPageMuted: muted
 // both, so that the muted one is never live in between.
 func (w *window) SetAudioMuted(v bool) {
-	if !w.canMute() {
+	if !allowPrivateAPI || !w.canMute() {
 		return
 	}
 	state := uintptr(send(w.web, "_mediaMutedState"))
@@ -1567,7 +1584,7 @@ func (w *window) SetAudioMuted(v bool) {
 }
 
 func (w *window) IsAudioMuted() bool {
-	return w.canMute() && uintptr(send(w.web, "_mediaMutedState"))&wkMediaAudioMuted != 0
+	return allowPrivateAPI && w.canMute() && uintptr(send(w.web, "_mediaMutedState"))&wkMediaAudioMuted != 0
 }
 
 // captureKeys are the properties of WKWebView that tell the page's
@@ -1576,20 +1593,20 @@ func (w *window) IsAudioMuted() bool {
 // key-value observable. Their values are WKMediaCaptureState's and
 // WKDisplayCaptureState's, none, active and muted, as
 // platform.CaptureState's.
-var captureKeys = [...]string{"cameraCaptureState", "microphoneCaptureState", "_displayCaptureState"}
+var captureKeys = [...]string{"cameraCaptureState", "microphoneCaptureState", webkitDisplayCaptureKey}
 
 // captureSetters change the capture of captureKeys: their completion
 // handler may be nil.
 var captureSetters = [...]string{
 	"setCameraCaptureState:completionHandler:",
 	"setMicrophoneCaptureState:completionHandler:",
-	"_setDisplayCaptureState:completionHandler:",
+	webkitDisplayCaptureSetter,
 }
 
 // CaptureState reports the captureKeys property of kind, CaptureNone when
 // WebKit doesn't answer it.
 func (w *window) CaptureState(kind platform.CaptureKind) platform.CaptureState {
-	if !respondsTo(w.web, captureKeys[kind]) {
+	if key := captureKeys[kind]; key == "" || !respondsTo(w.web, key) {
 		return platform.CaptureNone
 	}
 	return platform.CaptureState(send(w.web, captureKeys[kind]))
@@ -1608,8 +1625,8 @@ func (w *window) SetCaptureState(kind platform.CaptureKind, state platform.Captu
 }
 
 func (w *window) setCaptureState(kind platform.CaptureKind, state platform.CaptureState) {
-	if respondsTo(w.web, captureSetters[kind]) {
-		send(w.web, captureSetters[kind], uintptr(state), 0)
+	if setter := captureSetters[kind]; setter != "" && respondsTo(w.web, setter) {
+		send(w.web, setter, uintptr(state), 0)
 	}
 }
 
@@ -1634,7 +1651,7 @@ func (w *window) TogglePictureInPicture() {
 	if !w.opts.PictureInPicture {
 		return
 	}
-	if respondsTo(w.web, "_canTogglePictureInPicture") && respondsTo(w.web, "_togglePictureInPicture") &&
+	if allowPrivateAPI && respondsTo(w.web, "_canTogglePictureInPicture") && respondsTo(w.web, "_togglePictureInPicture") &&
 		sendBool(w.web, "_canTogglePictureInPicture") {
 		send(w.web, "_togglePictureInPicture")
 		return
@@ -1646,7 +1663,7 @@ func (w *window) TogglePictureInPicture() {
 // -[WKWebView _isPictureInPictureActive], false when WebKit doesn't
 // answer it.
 func (w *window) isPictureInPictureActive() bool {
-	return respondsTo(w.web, "_isPictureInPictureActive") && sendBool(w.web, "_isPictureInPictureActive")
+	return allowPrivateAPI && respondsTo(w.web, "_isPictureInPictureActive") && sendBool(w.web, "_isPictureInPictureActive")
 }
 
 // PictureInPictureActive tells WebKit's _isPictureInPictureActive, which
@@ -1685,7 +1702,7 @@ const pipScript = `(() => {
 // cache off until a page leaves without one. Pages of windows without
 // PictureInPicture are cached as usual.
 func (w *window) leavingPage() {
-	if !w.opts.PictureInPicture || w.closed {
+	if !allowPrivateAPI || !w.opts.PictureInPicture || w.closed {
 		return
 	}
 	off := w.pipActive || w.isPictureInPictureActive()
@@ -1734,7 +1751,7 @@ func (w *window) RestoreSessionState(state []byte) bool {
 }
 
 func (w *window) inspector() id {
-	if !w.opts.DevTools || !respondsTo(w.web, "_inspector") {
+	if !allowPrivateAPI || !w.opts.DevTools || !respondsTo(w.web, "_inspector") {
 		return 0
 	}
 	return send(w.web, "_inspector")
@@ -2187,20 +2204,26 @@ func registerWindowClasses() {
 				if w == nil {
 					return
 				}
-				switch goString(keyPath) {
+				key := goString(keyPath)
+				switch key {
 				case "title":
 					w.h.TitleChanged(goString(send(w.web, "title")))
-				case "_isPlayingAudio":
-					w.h.AudibleChanged(w.IsAudible())
 				case "cameraCaptureState":
 					w.captureChanged(platform.CaptureCamera)
 				case "microphoneCaptureState":
 					w.captureChanged(platform.CaptureMicrophone)
-				case "_displayCaptureState":
-					w.captureChanged(platform.CaptureDisplay)
 				case "effectiveAppearance":
 					// AppKit lays the title bar out again after telling us.
 					b().post(w.layoutTrafficLights)
+				default:
+					if allowPrivateAPI {
+						switch key {
+						case "_isPlayingAudio":
+							w.h.AudibleChanged(w.IsAudible())
+						case webkitDisplayCaptureKey:
+							w.captureChanged(platform.CaptureDisplay)
+						}
+					}
 				}
 			}),
 
@@ -2399,7 +2422,7 @@ func registerWindowClasses() {
 // without it, the action's WKNavigationType says, a link or a form,
 // which misses those.
 func userInitiated(action id, navType int) bool {
-	if respondsTo(action, "_isUserInitiated") {
+	if allowPrivateAPI && respondsTo(action, "_isUserInitiated") {
 		return sendBool(action, "_isUserInitiated")
 	}
 	return navType == 0 || navType == 1 // WKNavigationTypeLinkActivated, FormSubmitted
