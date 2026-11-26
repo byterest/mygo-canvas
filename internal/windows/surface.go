@@ -27,6 +27,7 @@ var (
 	procBeginPaint            = user32.NewProc("BeginPaint")
 	procEndPaint              = user32.NewProc("EndPaint")
 	procRedrawWindow          = user32.NewProc("RedrawWindow")
+	procUpdateWindow          = user32.NewProc("UpdateWindow")
 	procSystemParametersInfoW = user32.NewProc("SystemParametersInfoW")
 	procGetDoubleClickTime    = user32.NewProc("GetDoubleClickTime")
 	procGetMessageTime        = user32.NewProc("GetMessageTime")
@@ -164,6 +165,7 @@ type surface struct {
 	// frame of a window hidden, which no WM_PAINT asks for, is posted
 	// (drawHidden).
 	drawn, cloaked, hiddenFrame bool
+	dragFramePosted             bool
 
 	// bg is the content's background (SetBackground), and bgBrush a brush
 	// of it while it is opaque, which fills what the window shows beyond
@@ -265,6 +267,21 @@ func (s *surface) RequestFrame() {
 		s.hiddenFrame = true
 		s.w.b.post(s.drawHidden)
 	}
+	if s.buttons != 0 && s.drawn && !s.dragFramePosted {
+		// WM_PAINT comes after mouse input. A steady stream of pointer
+		// moves can defer it for several refreshes. Queue one callback
+		// that services an already invalidated surface and lets DXGI pace it.
+		s.dragFramePosted = true
+		s.w.b.post(s.drawDragFrame)
+	}
+}
+
+func (s *surface) drawDragFrame() {
+	s.dragFramePosted = false
+	if s.w.closed || s.w.b.surfaces[s.hwnd] != s || !s.w.IsVisible() {
+		return
+	}
+	procUpdateWindow.Call(s.hwnd)
 }
 
 // The window of native UI is cloaked, which keeps it out of sight though
